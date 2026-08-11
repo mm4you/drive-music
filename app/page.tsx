@@ -115,6 +115,7 @@ const VOLUME_KEY = "drive-music-volume-v1";
 const LIBRARY_VISIBILITY_KEY = "drive-music-library-visible-v1";
 const STARTUP_FALLBACK_MS = 8000;
 const SOURCE_RETRY_DELAYS = [450, 1100, 2400];
+const PLAY_PERMISSION_RETRY_DELAYS = [180, 650, 1600];
 const IOS_END_HANDOFF_SECONDS = 0.55;
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -404,6 +405,18 @@ function configurePlaybackAudioSession() {
   }
 }
 
+function replacePlaybackSource(
+  audio: HTMLAudioElement,
+  source: string,
+  preservePlaybackSession = false,
+) {
+  audio.autoplay = preservePlaybackSession;
+  audio.src = source;
+  // Setting src already starts loading. Calling load() during an automatic
+  // handoff can reset WebKit's active playback session and require a new tap.
+  if (!preservePlaybackSession) audio.load();
+}
+
 function libraryPayload(
   playlists: MusicPlaylist[],
   activePlaylistId: string,
@@ -513,7 +526,10 @@ export default function Home() {
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumePositionRef = useRef(0);
   const endHandoffTrackIdRef = useRef<string | null>(null);
+  const autoAdvanceInFlightRef = useRef(false);
   const consecutiveTrackFailuresRef = useRef(0);
+  const playPermissionRetryRef = useRef(0);
+  const requestPlaybackRef = useRef<(audio: HTMLAudioElement) => void>(() => undefined);
   const queuedTrackIdRef = useRef<string | null>(null);
   const preloadedTrackIdRef = useRef<string | null>(null);
   const warmedTrackIdRef = useRef<string | null>(null);
@@ -1014,23 +1030,14 @@ export default function Home() {
         ? audio.currentTime
         : 0;
       sourceIndexRef.current += 1;
-      audio.src = nextSource;
-      audio.load();
+      replacePlaybackSource(audio, nextSource, isAppleTouchDevice());
       configurePlaybackAudioSession();
-      void audio.play().catch((error: unknown) => {
-        const errorName = error && typeof error === "object" && "name" in error
-          ? String((error as { name?: unknown }).name ?? "")
-          : "";
-        if (errorName === "NotAllowedError" && document.visibilityState === "visible") {
-          shouldResumeRef.current = false;
-          setIsBuffering(false);
-          setMessage("Trình duyệt cần bạn chạm nút Phát để tiếp tục.");
-        }
-      });
+      playPermissionRetryRef.current = 0;
+      requestPlaybackRef.current(audio);
     }, STARTUP_FALLBACK_MS);
   }, [clearFallbackTimer]);
 
-  const requestPlayback = useCallback((audio: HTMLAudioElement) => {
+  const requestPlayback = useCallback(function attemptPlayback(audio: HTMLAudioElement) {
     void audio.play().catch((error: unknown) => {
       if (!shouldResumeRef.current) return;
       const errorName = error && typeof error === "object" && "name" in error
@@ -1038,12 +1045,24 @@ export default function Home() {
         : "";
       if (errorName === "NotAllowedError") {
         clearFallbackTimer();
+        setIsBuffering(true);
         if (document.visibilityState === "hidden") {
-          setIsBuffering(true);
           setMessage("iPhone đang giữ phiên phát nền. Drive Music sẽ tự nối lại khi có thể.");
           return;
         }
+        const retryIndex = playPermissionRetryRef.current;
+        if (retryIndex < PLAY_PERMISSION_RETRY_DELAYS.length) {
+          playPermissionRetryRef.current += 1;
+          clearRecoveryTimer();
+          recoveryTimerRef.current = setTimeout(() => {
+            recoveryTimerRef.current = null;
+            if (shouldResumeRef.current && audio === audioRef.current) attemptPlayback(audio);
+          }, PLAY_PERMISSION_RETRY_DELAYS[retryIndex]);
+          setMessage("Đang tự nối lại phiên phát...");
+          return;
+        }
         shouldResumeRef.current = false;
+        autoAdvanceInFlightRef.current = false;
         setIsBuffering(false);
         setMessage("Trình duyệt cần bạn chạm nút Phát để tiếp tục.");
         return;
@@ -1051,9 +1070,13 @@ export default function Home() {
       setIsBuffering(true);
       armFallbackTimer();
     });
-  }, [armFallbackTimer, clearFallbackTimer]);
+  }, [armFallbackTimer, clearFallbackTimer, clearRecoveryTimer]);
 
-  const prepareTrack = useCallback((track: Track) => {
+  useEffect(() => {
+    requestPlaybackRef.current = requestPlayback;
+  }, [requestPlayback]);
+
+  const prepareTrack = useCallback((track: Track, preservePlaybackSession = false) => {
     const audio = audioRef.current;
     if (!audio) return;
     if (activeTrackIdRef.current === track.id && audio.src && !audio.error) return;
@@ -1062,8 +1085,7 @@ export default function Home() {
     sourceIndexRef.current = 0;
     activeTrackIdRef.current = track.id;
     endHandoffTrackIdRef.current = null;
-    audio.src = sourceListRef.current[0];
-    audio.load();
+    replacePlaybackSource(audio, sourceListRef.current[0], preservePlaybackSession);
     setCurrentTime(0);
     setDuration(0);
   }, [clearRecoveryTimer]);
@@ -1074,7 +1096,7 @@ export default function Home() {
   }, [currentTrack, hydrated, prepareTrack]);
 
   const playAt = useCallback(
-    (index: number) => {
+    (index: number, preservePlaybackSession = false) => {
       const track = playlistRef.current[index];
       const audio = audioRef.current;
       if (!track || !audio) return;
@@ -1089,10 +1111,12 @@ export default function Home() {
         preloadedTrackIdRef.current = null;
       }
       queuedTrackIdRef.current = null;
+      playPermissionRetryRef.current = 0;
+      if (!preservePlaybackSession) autoAdvanceInFlightRef.current = false;
       setMessage("");
       setCurrentIndex(index);
       shouldResumeRef.current = true;
-      prepareTrack(track);
+      prepareTrack(track, preservePlaybackSession);
       if (activeTrackIdRef.current === track.id && audio.ended) audio.currentTime = 0;
       setIsBuffering(true);
       setMessage("Đang tải bản nhạc chất lượng gốc...");
@@ -1143,14 +1167,25 @@ export default function Home() {
 
   useEffect(() => () => warmupAbortRef.current?.abort(), []);
 
-  const playNext = useCallback(() => {
+  const advanceToNext = useCallback((preservePlaybackSession: boolean) => {
     const tracks = playlistRef.current;
-    if (!tracks.length) return;
+    if (!tracks.length) {
+      autoAdvanceInFlightRef.current = false;
+      return;
+    }
     const active = activeTrackIdRef.current;
     const index = Math.max(0, tracks.findIndex((track) => track.id === active));
     const queuedIndex = tracks.findIndex((track) => track.id === queuedTrackIdRef.current);
-    playAt(queuedIndex >= 0 ? queuedIndex : nextIndexFor(tracks, index));
+    playAt(queuedIndex >= 0 ? queuedIndex : nextIndexFor(tracks, index), preservePlaybackSession);
   }, [nextIndexFor, playAt]);
+
+  const playNext = useCallback(() => advanceToNext(false), [advanceToNext]);
+
+  const playNextAutomatically = useCallback(() => {
+    if (autoAdvanceInFlightRef.current) return;
+    autoAdvanceInFlightRef.current = true;
+    advanceToNext(true);
+  }, [advanceToNext]);
 
   const playPrevious = useCallback(() => {
     const tracks = playlistRef.current;
@@ -1187,7 +1222,7 @@ export default function Home() {
       ) {
         // Hand off just before WebKit suspends the background page at media end.
         endHandoffTrackIdRef.current = activeTrackId;
-        playNext();
+        playNextAutomatically();
         return;
       }
       if ("mediaSession" in navigator && Number.isFinite(audio.duration) && audio.duration > 0) {
@@ -1218,6 +1253,9 @@ export default function Home() {
       clearFallbackTimer();
       clearRecoveryTimer();
       consecutiveTrackFailuresRef.current = 0;
+      playPermissionRetryRef.current = 0;
+      autoAdvanceInFlightRef.current = false;
+      audio.autoplay = false;
       setIsBuffering(false);
       setMessage("");
     };
@@ -1242,7 +1280,7 @@ export default function Home() {
     };
     const onEnded = () => {
       if (autoPlayEnabled) {
-        playNext();
+        playNextAutomatically();
       } else {
         shouldResumeRef.current = false;
         setMessage("Đã phát xong. Tự động phát đang tắt.");
@@ -1268,8 +1306,7 @@ export default function Home() {
           recoveryTimerRef.current = null;
           if (!shouldResumeRef.current) return;
           sourceIndexRef.current = nextIndex;
-          audio.src = nextSource;
-          audio.load();
+          replacePlaybackSource(audio, nextSource, isAppleTouchDevice());
           armFallbackTimer();
           requestPlayback(audio);
         }, delay);
@@ -1293,7 +1330,10 @@ export default function Home() {
         clearRecoveryTimer();
         recoveryTimerRef.current = setTimeout(() => {
           recoveryTimerRef.current = null;
-          if (shouldResumeRef.current) playNext();
+          if (shouldResumeRef.current) {
+            autoAdvanceInFlightRef.current = false;
+            playNextAutomatically();
+          }
         }, 700);
         return;
       }
@@ -1329,7 +1369,7 @@ export default function Home() {
       clearFallbackTimer();
       clearRecoveryTimer();
     };
-  }, [armFallbackTimer, autoPlayEnabled, clearFallbackTimer, clearRecoveryTimer, playNext, requestPlayback]);
+  }, [armFallbackTimer, autoPlayEnabled, clearFallbackTimer, clearRecoveryTimer, playNextAutomatically, requestPlayback]);
 
   useEffect(() => {
     const recoverInterruptedPlayback = () => {
@@ -1344,7 +1384,8 @@ export default function Home() {
       configurePlaybackAudioSession();
       clearFallbackTimer();
       clearRecoveryTimer();
-      if (audio.error) prepareTrack(track);
+      if (audio.error) prepareTrack(track, isAppleTouchDevice());
+      playPermissionRetryRef.current = 0;
       shouldResumeRef.current = true;
       setIsBuffering(true);
       setMessage("Đang tự nối lại phiên nghe nhạc...");
@@ -1371,6 +1412,8 @@ export default function Home() {
     if (audio.paused) {
       configurePlaybackAudioSession();
       clearRecoveryTimer();
+      playPermissionRetryRef.current = 0;
+      autoAdvanceInFlightRef.current = false;
       const index = currentIndex ?? 0;
       const track = tracks[index];
       if (!track) return;
@@ -1751,6 +1794,8 @@ export default function Home() {
         if (!track || !audio) return;
         configurePlaybackAudioSession();
         clearRecoveryTimer();
+        playPermissionRetryRef.current = 0;
+        autoAdvanceInFlightRef.current = false;
         shouldResumeRef.current = true;
         prepareTrack(track);
         if (activeTrackIdRef.current === track.id && audio.ended) audio.currentTime = 0;
