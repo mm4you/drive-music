@@ -34,6 +34,7 @@ test("renders the Drive Music shell with a visible sign-in action", async () => 
   assert.match(html, /aria-label=["']Âm lượng["']/i);
   assert.match(html, /class=["']volume-control["']/i);
   assert.match(html, />Danh sách phát<\/span>/i);
+  assert.match(html, /aria-label=["']Đổi tên playlist Playlist của tôi["']/i);
 });
 
 test("filters audio files from a public Google Drive folder", async () => {

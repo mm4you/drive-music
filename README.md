@@ -10,7 +10,7 @@ Drive Music là trình nghe nhạc web tối giản dành cho MP3, FLAC và file
 - Nhập toàn bộ thư mục Google Drive công khai và tự lọc file âm thanh.
 - Hỗ trợ MP3, FLAC, M4A, AAC, OGG, OPUS và WAV.
 - Tự đọc tên bài hát, nghệ sĩ, album, định dạng và dung lượng khi metadata khả dụng.
-- Tạo nhiều playlist riêng, chuyển playlist và xoá playlist có xác nhận.
+- Tạo nhiều playlist riêng, đổi tên, chuyển playlist và xoá playlist có xác nhận.
 - Phát, tạm dừng, bài trước, bài sau, tua nhạc, trộn bài và tự động phát.
 - Làm nóng trước một phần nhỏ của bài kế tiếp để giảm thời gian chờ khi chuyển bài.
 - Giữ bài đang nghe khi người dùng mở playlist khác.

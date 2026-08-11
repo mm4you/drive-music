@@ -415,6 +415,7 @@ button, input[type="range"] { -webkit-tap-highlight-color: transparent; }
 .playlist-heading-actions > span { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .playlist-heading-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 35px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); color: #b6bcbf; font-size: 10px; font-weight: 700; cursor: pointer; }
 .playlist-heading-actions button:hover { border-color: rgba(216,255,99,.24); color: var(--accent); }
+.playlist-heading-actions .playlist-rename.active { border-color: rgba(216,255,99,.24); background: rgba(216,255,99,.075); color: var(--accent); }
 .playlist-heading-actions .playlist-delete:hover { border-color: rgba(255,126,126,.28); color: #ff9f9f; }
 .playlist-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin: 0 0 12px; padding: 14px; border: 1px solid rgba(216,255,99,.12); border-radius: 15px; background: rgba(216,255,99,.025); animation: panel-in 180ms ease-out; }
 .playlist-create .submit-button { min-height: 45px; margin: 0; }

@@ -83,6 +83,7 @@ type IconName =
   | "close"
   | "cloud"
   | "drive"
+  | "edit"
   | "github"
   | "install"
   | "link"
@@ -142,6 +143,12 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="m8.4 3.5-5.2 9 3 5.2 5.2-9Z" />
         <path d="M8.4 3.5h6.1l5.2 9h-6.1Z" />
         <path d="M6.2 17.7 9.3 12h10.4l-3 5.7Z" />
+      </>
+    ),
+    edit: (
+      <>
+        <path d="m4 20 4.2-1 10.6-10.6-3.2-3.2L5 15.8Z" />
+        <path d="m13.8 7 3.2 3.2M4 20h4.2" />
       </>
     ),
     github: (
@@ -574,6 +581,8 @@ export default function Home() {
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [playlistFormOpen, setPlaylistFormOpen] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [playlistRenameOpen, setPlaylistRenameOpen] = useState(false);
+  const [playlistRenameName, setPlaylistRenameName] = useState("");
   const [syncUser, setSyncUser] = useState<SyncUser | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("checking");
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
@@ -1650,6 +1659,8 @@ export default function Home() {
       (!audio.paused || shouldResumeRef.current || (audio.currentTime > 0 && !audio.ended)),
     );
     metadataUpgradeStartedRef.current = false;
+    setPlaylistRenameOpen(false);
+    setPlaylistRenameName("");
     setActivePlaylistId(target.id);
     if (!keepCurrentPlayback) {
       shouldResumeRef.current = false;
@@ -1702,7 +1713,47 @@ export default function Home() {
     setPlaylists((current) => [...current, created]);
     setNewPlaylistName("");
     setPlaylistFormOpen(false);
+    setPlaylistRenameOpen(false);
+    setPlaylistRenameName("");
     openPlaylist(created);
+  };
+
+  const togglePlaylistRename = () => {
+    if (!activePlaylist) return;
+    if (playlistRenameOpen) {
+      setPlaylistRenameOpen(false);
+      setPlaylistRenameName("");
+      return;
+    }
+    setPlaylistFormOpen(false);
+    setNewPlaylistName("");
+    setPlaylistRenameName(activePlaylist.name);
+    setPlaylistRenameOpen(true);
+  };
+
+  const renameActivePlaylist = (event: FormEvent) => {
+    event.preventDefault();
+    const target = activePlaylist;
+    const name = playlistRenameName.trim();
+    if (!target || !name) return;
+    if (playlists.some((item) => (
+      item.id !== target.id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase()
+    ))) {
+      setMessage("Tên playlist này đã tồn tại.");
+      return;
+    }
+    if (name === target.name) {
+      setPlaylistRenameOpen(false);
+      setPlaylistRenameName("");
+      setMessage("Tên playlist không thay đổi.");
+      return;
+    }
+    setPlaylists((current) => current.map((item) => (
+      item.id === target.id ? { ...item, name } : item
+    )));
+    setPlaylistRenameOpen(false);
+    setPlaylistRenameName("");
+    setMessage(`Đã đổi tên playlist thành “${name}”.`);
   };
 
   const deleteActivePlaylist = () => {
@@ -1723,6 +1774,8 @@ export default function Home() {
     setActivePlaylistId(fallback.id);
     setPlaylistFormOpen(false);
     setNewPlaylistName("");
+    setPlaylistRenameOpen(false);
+    setPlaylistRenameName("");
     metadataUpgradeStartedRef.current = false;
 
     if (deletesPlaybackQueue) {
@@ -2209,13 +2262,30 @@ export default function Home() {
           <div><p className="eyebrow">THƯ VIỆN</p><h2>{activePlaylist?.name ?? "Playlist"}</h2></div>
           <div className="playlist-heading-actions">
             <span>{playlist.length} bài hát</span>
+            <button
+              aria-label={playlistRenameOpen ? "Đóng phần đổi tên playlist" : `Đổi tên playlist ${activePlaylist?.name ?? "hiện tại"}`}
+              className={`playlist-rename ${playlistRenameOpen ? "active" : ""}`}
+              onClick={togglePlaylistRename}
+              type="button"
+            >
+              <Icon name={playlistRenameOpen ? "close" : "edit"} size={15} />
+              <span>{playlistRenameOpen ? "Đóng" : "Đổi tên"}</span>
+            </button>
             {playlists.length > 1 && (
               <button aria-label={`Xóa playlist ${activePlaylist?.name ?? "hiện tại"}`} className="playlist-delete" onClick={deleteActivePlaylist} type="button">
                 <Icon name="trash" size={15} />
                 <span>Xóa playlist</span>
               </button>
             )}
-            <button aria-label={playlistFormOpen ? "Đóng phần tạo playlist" : "Tạo playlist mới"} onClick={() => setPlaylistFormOpen((open) => !open)} type="button">
+            <button
+              aria-label={playlistFormOpen ? "Đóng phần tạo playlist" : "Tạo playlist mới"}
+              onClick={() => {
+                setPlaylistRenameOpen(false);
+                setPlaylistRenameName("");
+                setPlaylistFormOpen((open) => !open);
+              }}
+              type="button"
+            >
               <Icon name={playlistFormOpen ? "close" : "add"} size={15} />
               <span>{playlistFormOpen ? "Đóng" : "Playlist mới"}</span>
             </button>
@@ -2236,6 +2306,24 @@ export default function Home() {
               />
             </label>
             <button className="submit-button" type="submit"><Icon name="add" size={16} /> Tạo playlist</button>
+          </form>
+        )}
+
+        {playlistRenameOpen && (
+          <form className="playlist-create playlist-rename-form" onSubmit={renameActivePlaylist}>
+            <label className="field">
+              <span>Tên mới của playlist</span>
+              <input
+                autoFocus
+                maxLength={48}
+                onChange={(event) => setPlaylistRenameName(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                placeholder="Nhập tên playlist"
+                required
+                value={playlistRenameName}
+              />
+            </label>
+            <button className="submit-button" type="submit"><Icon name="edit" size={16} /> Lưu tên mới</button>
           </form>
         )}
 
