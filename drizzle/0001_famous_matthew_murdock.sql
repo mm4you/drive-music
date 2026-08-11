@@ -1,0 +1,1 @@
+ALTER TABLE `music_libraries` ADD `account_email` text;

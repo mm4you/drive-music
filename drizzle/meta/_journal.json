@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786196374113,
+      "tag": "0000_silky_chimera",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786414394650,
+      "tag": "0001_famous_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786414729590,
+      "tag": "0002_acoustic_vindicator",
+      "breakpoints": true
+    }
+  ]
+}
