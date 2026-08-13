@@ -36,7 +36,8 @@ test("renders the Drive Music shell with a visible sign-in action", async () => 
   assert.match(html, /aria-label=["']Ẩn danh sách phát["']/i);
   assert.doesNotMatch(html, />Danh sách phát<\/span>/i);
   assert.match(html, /aria-label=["']Phát bài hiện tại 2 lần["']/i);
-  assert.match(html, /aria-label=["']Đổi tên playlist Playlist của tôi["']/i);
+  assert.match(html, /<h2>Danh sách phát<\/h2>/i);
+  assert.doesNotMatch(html, />THƯ VIỆN</i);
 });
 
 test("filters audio files from a public Google Drive folder", async () => {

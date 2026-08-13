@@ -84,7 +84,6 @@ type IconName =
   | "close"
   | "cloud"
   | "drive"
-  | "edit"
   | "github"
   | "install"
   | "link"
@@ -145,12 +144,6 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="m8.4 3.5-5.2 9 3 5.2 5.2-9Z" />
         <path d="M8.4 3.5h6.1l5.2 9h-6.1Z" />
         <path d="M6.2 17.7 9.3 12h10.4l-3 5.7Z" />
-      </>
-    ),
-    edit: (
-      <>
-        <path d="m4 20 4.2-1 10.6-10.6-3.2-3.2L5 15.8Z" />
-        <path d="m13.8 7 3.2 3.2M4 20h4.2" />
       </>
     ),
     github: (
@@ -558,6 +551,7 @@ export default function Home() {
   const repeatCompletionRef = useRef(0);
   const requestPlaybackRef = useRef<(audio: HTMLAudioElement) => void>(() => undefined);
   const controlNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlAudioContextRef = useRef<AudioContext | null>(null);
   const queuedTrackIdRef = useRef<string | null>(null);
   const preloadedTrackIdRef = useRef<string | null>(null);
   const warmedTrackIdRef = useRef<string | null>(null);
@@ -602,10 +596,6 @@ export default function Home() {
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [repeatOneEnabled, setRepeatOneEnabled] = useState(false);
-  const [playlistFormOpen, setPlaylistFormOpen] = useState(false);
-  const [newPlaylistName, setNewPlaylistName] = useState("");
-  const [playlistRenameOpen, setPlaylistRenameOpen] = useState(false);
-  const [playlistRenameName, setPlaylistRenameName] = useState("");
   const [syncUser, setSyncUser] = useState<SyncUser | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("checking");
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
@@ -753,22 +743,47 @@ export default function Home() {
     repeatCompletionRef.current = 0;
   }, [currentTrack?.id]);
 
+  const playControlClick = useCallback(() => {
+    try {
+      const context = controlAudioContextRef.current ?? new AudioContext();
+      controlAudioContextRef.current = context;
+      const emit = () => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const now = context.currentTime;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(520, now);
+        oscillator.frequency.exponentialRampToValueAtTime(360, now + 0.035);
+        gain.gain.setValueAtTime(0.018, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.045);
+      };
+      if (context.state === "suspended") {
+        void context.resume().then(emit).catch(() => undefined);
+      } else {
+        emit();
+      }
+    } catch {
+      // Some browsers may block Web Audio even after a direct user gesture.
+    }
+  }, []);
+
   const showControlNotice = useCallback((notice: string) => {
     if (controlNoticeTimerRef.current) clearTimeout(controlNoticeTimerRef.current);
     setControlNotice(notice);
-    try {
-      navigator.vibrate?.(8);
-    } catch {
-      // iOS currently reserves haptics for native controls.
-    }
+    playControlClick();
     controlNoticeTimerRef.current = setTimeout(() => {
       controlNoticeTimerRef.current = null;
       setControlNotice("");
     }, 1450);
-  }, []);
+  }, [playControlClick]);
 
   useEffect(() => () => {
     if (controlNoticeTimerRef.current) clearTimeout(controlNoticeTimerRef.current);
+    if (controlAudioContextRef.current) void controlAudioContextRef.current.close();
   }, []);
 
   useEffect(() => {
@@ -1716,161 +1731,10 @@ export default function Home() {
     setPlaylist(next);
   };
 
-  const openPlaylist = (target: MusicPlaylist) => {
-    const audio = audioRef.current;
-    const keepCurrentPlayback = Boolean(
-      activeTrackIdRef.current &&
-      audio?.src &&
-      (!audio.paused || shouldResumeRef.current || (audio.currentTime > 0 && !audio.ended)),
-    );
-    metadataUpgradeStartedRef.current = false;
-    setPlaylistRenameOpen(false);
-    setPlaylistRenameName("");
-    setActivePlaylistId(target.id);
-    if (!keepCurrentPlayback) {
-      shouldResumeRef.current = false;
-      clearFallbackTimer();
-      audio?.pause();
-      if (audio) {
-        audio.removeAttribute("src");
-        audio.load();
-      }
-      const preloader = preloadAudioRef.current;
-      if (preloader) {
-        preloader.removeAttribute("src");
-        preloader.load();
-      }
-      activeTrackIdRef.current = null;
-      queuedTrackIdRef.current = null;
-      preloadedTrackIdRef.current = null;
-      clearTrackWarmup();
-      playlistRef.current = target.tracks;
-      setPlaybackPlaylistId(target.id);
-      setCurrentIndex(target.tracks.length ? 0 : null);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsBuffering(false);
-    }
-    setMessage(keepCurrentPlayback
-      ? `Đã mở ${target.name}. Bài đang nghe vẫn tiếp tục phát.`
-      : `Đã mở ${target.name}.`);
-  };
-
   const playFromActivePlaylist = (index: number) => {
     playlistRef.current = playlist;
     setPlaybackPlaylistId(activePlaylistId);
     playAt(index);
-  };
-
-  const createPlaylist = (event: FormEvent) => {
-    event.preventDefault();
-    const name = newPlaylistName.trim();
-    if (!name) return;
-    if (playlists.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
-      setMessage("Tên playlist này đã tồn tại.");
-      return;
-    }
-    const created: MusicPlaylist = {
-      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `playlist-${Date.now()}`,
-      name,
-      tracks: [],
-    };
-    setPlaylists((current) => [...current, created]);
-    setNewPlaylistName("");
-    setPlaylistFormOpen(false);
-    setPlaylistRenameOpen(false);
-    setPlaylistRenameName("");
-    openPlaylist(created);
-  };
-
-  const togglePlaylistRename = () => {
-    if (!activePlaylist) return;
-    if (playlistRenameOpen) {
-      setPlaylistRenameOpen(false);
-      setPlaylistRenameName("");
-      return;
-    }
-    setPlaylistFormOpen(false);
-    setNewPlaylistName("");
-    setPlaylistRenameName(activePlaylist.name);
-    setPlaylistRenameOpen(true);
-  };
-
-  const renameActivePlaylist = (event: FormEvent) => {
-    event.preventDefault();
-    const target = activePlaylist;
-    const name = playlistRenameName.trim();
-    if (!target || !name) return;
-    if (playlists.some((item) => (
-      item.id !== target.id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase()
-    ))) {
-      setMessage("Tên playlist này đã tồn tại.");
-      return;
-    }
-    if (name === target.name) {
-      setPlaylistRenameOpen(false);
-      setPlaylistRenameName("");
-      setMessage("Tên playlist không thay đổi.");
-      return;
-    }
-    setPlaylists((current) => current.map((item) => (
-      item.id === target.id ? { ...item, name } : item
-    )));
-    setPlaylistRenameOpen(false);
-    setPlaylistRenameName("");
-    setMessage(`Đã đổi tên playlist thành “${name}”.`);
-  };
-
-  const deleteActivePlaylist = () => {
-    const target = activePlaylist;
-    if (!target || playlists.length <= 1) {
-      setMessage("Cần giữ lại ít nhất một playlist.");
-      return;
-    }
-    const trackLabel = target.tracks.length
-      ? ` và ${target.tracks.length} bài hát bên trong`
-      : "";
-    if (!window.confirm(`Xóa playlist “${target.name}”${trackLabel}?`)) return;
-
-    const remaining = playlists.filter((item) => item.id !== target.id);
-    const fallback = remaining.find((item) => item.id === playbackPlaylistId) ?? remaining[0];
-    const deletesPlaybackQueue = target.id === playbackPlaylistId;
-    setPlaylists(remaining);
-    setActivePlaylistId(fallback.id);
-    setPlaylistFormOpen(false);
-    setNewPlaylistName("");
-    setPlaylistRenameOpen(false);
-    setPlaylistRenameName("");
-    metadataUpgradeStartedRef.current = false;
-
-    if (deletesPlaybackQueue) {
-      shouldResumeRef.current = false;
-      clearFallbackTimer();
-      clearRecoveryTimer();
-      clearTrackWarmup();
-      const audio = audioRef.current;
-      audio?.pause();
-      if (audio) {
-        audio.removeAttribute("src");
-        audio.load();
-      }
-      const preloader = preloadAudioRef.current;
-      if (preloader) {
-        preloader.removeAttribute("src");
-        preloader.load();
-      }
-      activeTrackIdRef.current = null;
-      queuedTrackIdRef.current = null;
-      preloadedTrackIdRef.current = null;
-      playlistRef.current = fallback.tracks;
-      setPlaybackPlaylistId(fallback.id);
-      setCurrentIndex(fallback.tracks.length ? 0 : null);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsPlaying(false);
-      setIsBuffering(false);
-    }
-    setMessage(`Đã xóa playlist “${target.name}”.`);
   };
 
   const seek = (value: number) => {
@@ -2358,90 +2222,8 @@ export default function Home() {
 
       <section className="playlist-section" hidden={!libraryVisible} id="playlist-library">
         <div className="section-heading">
-          <div><p className="eyebrow">THƯ VIỆN</p><h2>{activePlaylist?.name ?? "Playlist"}</h2></div>
-          <div className="playlist-heading-actions">
-            <span>{playlist.length} bài hát</span>
-            <button
-              aria-label={playlistRenameOpen ? "Đóng phần đổi tên playlist" : `Đổi tên playlist ${activePlaylist?.name ?? "hiện tại"}`}
-              className={`playlist-rename ${playlistRenameOpen ? "active" : ""}`}
-              onClick={togglePlaylistRename}
-              type="button"
-            >
-              <Icon name={playlistRenameOpen ? "close" : "edit"} size={15} />
-              <span>{playlistRenameOpen ? "Đóng" : "Đổi tên"}</span>
-            </button>
-            {playlists.length > 1 && (
-              <button aria-label={`Xóa playlist ${activePlaylist?.name ?? "hiện tại"}`} className="playlist-delete" onClick={deleteActivePlaylist} type="button">
-                <Icon name="trash" size={15} />
-                <span>Xóa playlist</span>
-              </button>
-            )}
-            <button
-              aria-label={playlistFormOpen ? "Đóng phần tạo playlist" : "Tạo playlist mới"}
-              onClick={() => {
-                setPlaylistRenameOpen(false);
-                setPlaylistRenameName("");
-                setPlaylistFormOpen((open) => !open);
-              }}
-              type="button"
-            >
-              <Icon name={playlistFormOpen ? "close" : "add"} size={15} />
-              <span>{playlistFormOpen ? "Đóng" : "Playlist mới"}</span>
-            </button>
-          </div>
-        </div>
-
-        {playlistFormOpen && (
-          <form className="playlist-create" onSubmit={createPlaylist}>
-            <label className="field">
-              <span>Tên playlist mới</span>
-              <input
-                autoFocus
-                maxLength={48}
-                onChange={(event) => setNewPlaylistName(event.target.value)}
-                placeholder="Ví dụ: Nhạc lái xe"
-                required
-                value={newPlaylistName}
-              />
-            </label>
-            <button className="submit-button" type="submit"><Icon name="add" size={16} /> Tạo playlist</button>
-          </form>
-        )}
-
-        {playlistRenameOpen && (
-          <form className="playlist-create playlist-rename-form" onSubmit={renameActivePlaylist}>
-            <label className="field">
-              <span>Tên mới của playlist</span>
-              <input
-                autoFocus
-                maxLength={48}
-                onChange={(event) => setPlaylistRenameName(event.target.value)}
-                onFocus={(event) => event.currentTarget.select()}
-                placeholder="Nhập tên playlist"
-                required
-                value={playlistRenameName}
-              />
-            </label>
-            <button className="submit-button" type="submit"><Icon name="edit" size={16} /> Lưu tên mới</button>
-          </form>
-        )}
-
-        <div aria-label="Danh sách playlist" className="playlist-tabs">
-          {playlists.map((item) => (
-            <button
-              aria-current={item.id === activePlaylistId ? "true" : undefined}
-              className={item.id === activePlaylistId ? "active" : ""}
-              key={item.id}
-              onClick={() => {
-                if (item.id !== activePlaylistId) openPlaylist(item);
-              }}
-              type="button"
-            >
-              <Icon name="music" size={14} />
-              <span>{item.name}</span>
-              <small>{item.tracks.length}</small>
-            </button>
-          ))}
+          <h2>Danh sách phát</h2>
+          <span className="queue-count">{playlist.length} bài hát</span>
         </div>
 
         {!playlist.length ? (
