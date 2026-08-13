@@ -96,6 +96,7 @@ type IconName =
   | "cloud"
   | "drive"
   | "github"
+  | "info"
   | "install"
   | "link"
   | "music"
@@ -110,9 +111,11 @@ type IconName =
   | "share"
   | "shield"
   | "shuffle"
+  | "spotify"
   | "trash"
   | "volumeHigh"
-  | "volumeMute";
+  | "volumeMute"
+  | "youtube";
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -132,6 +135,7 @@ const STARTUP_FALLBACK_MS = 8000;
 const SOURCE_RETRY_DELAYS = [450, 1100, 2400];
 const PLAY_PERMISSION_RETRY_DELAYS = [180, 650, 1600];
 const IOS_END_HANDOFF_SECONDS = 0.55;
+const ACCOUNT_FEATURES_ENABLED = false;
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
@@ -169,6 +173,12 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
       <>
         <path d="M12 3v12m0 0 5-5m-5 5-5-5" />
         <path d="M5 19v2h14v-2" />
+      </>
+    ),
+    info: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5M12 8h.01" />
       </>
     ),
     link: (
@@ -258,6 +268,12 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="m17 4 3 3-3 3" />
       </>
     ),
+    spotify: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M7.6 9.7c3.7-1 7.3-.7 10.4.9M8.4 13c3-.8 5.9-.5 8.6.7M9.2 16c2.3-.5 4.6-.3 6.7.6" />
+      </>
+    ),
     trash: (
       <>
         <path d="M4 7h16M9 3h6l1 4H8Z" />
@@ -274,6 +290,12 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
       <>
         <path d="M11 5 6.8 8.5H3v7h3.8L11 19Z" />
         <path d="m16 10 5 5m0-5-5 5" />
+      </>
+    ),
+    youtube: (
+      <>
+        <path d="M21 8.2a3 3 0 0 0-2.1-2.1C17.1 5.6 12 5.6 12 5.6s-5.1 0-6.9.5A3 3 0 0 0 3 8.2 31 31 0 0 0 2.6 12 31 31 0 0 0 3 15.8a3 3 0 0 0 2.1 2.1c1.8.5 6.9.5 6.9.5s5.1 0 6.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .4-3.8 31 31 0 0 0-.4-3.8Z" />
+        <path d="m10 9 5 3-5 3Z" />
       </>
     ),
   };
@@ -614,6 +636,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [controlNotice, setControlNotice] = useState("");
   const [installOpen, setInstallOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
   const [driveMetadata, setDriveMetadata] = useState<DriveMetadata | null>(null);
   const [readingMetadata, setReadingMetadata] = useState(false);
@@ -624,7 +647,6 @@ export default function Home() {
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [sharedCatalogTracks, setSharedCatalogTracks] = useState<Track[]>([]);
-  const [catalogProgress, setCatalogProgress] = useState<{ imported: number; total: number; complete: boolean } | null>(null);
   const [syncUser, setSyncUser] = useState<SyncUser | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("checking");
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
@@ -679,6 +701,13 @@ export default function Home() {
     const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     themeColor?.setAttribute("content", `hsl(${activeHue} 26% 13%)`);
   }, [activeHue]);
+
+  useEffect(() => {
+    if (!aboutOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [aboutOpen]);
 
   useEffect(() => {
     let active = true;
@@ -821,6 +850,7 @@ export default function Home() {
     const button = event.target.closest("button");
     if (!button || button.disabled) return;
     playControlClick();
+    if (button.dataset.notice === "off") return;
     const label = button.getAttribute("aria-label")?.trim();
     if (label) showControlNotice(label);
   }, [playControlClick, showControlNotice]);
@@ -883,27 +913,19 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     let active = true;
-    const migrateCatalog = async () => {
+    const loadSharedCatalog = async () => {
       try {
-        let response = await fetch("/api/catalog", { cache: "no-store" });
-        let snapshot = await response.json() as SharedCatalogSnapshot;
+        const response = await fetch("/api/catalog", { cache: "no-store" });
+        const snapshot = await response.json() as SharedCatalogSnapshot;
         if (!response.ok) throw new Error(snapshot.error || "Chưa đọc được thư viện chung.");
-        if (active) setCatalogProgress({ imported: snapshot.imported, total: snapshot.total, complete: snapshot.complete });
-
-        for (let attempt = 0; active && !snapshot.complete && attempt < 40; attempt += 1) {
-          response = await fetch("/api/catalog", { method: "POST" });
-          snapshot = await response.json() as SharedCatalogSnapshot;
-          if (!response.ok) throw new Error(snapshot.error || "Quá trình lưu nhạc đang tạm dừng.");
-          if (active) setCatalogProgress({ imported: snapshot.imported, total: snapshot.total, complete: snapshot.complete });
-        }
         if (!active || !snapshot.complete || !snapshot.tracks.length) return;
         sharedCatalogRef.current = true;
         setSharedCatalogTracks(snapshot.tracks);
       } catch (error) {
-        if (active) setMessage(error instanceof Error ? error.message : "Quá trình lưu thư viện chung đang tạm dừng.");
+        if (active) setMessage(error instanceof Error ? error.message : "Chưa đọc được thư viện chung.");
       }
     };
-    void migrateCatalog();
+    void loadSharedCatalog();
     return () => { active = false; };
   }, [hydrated]);
 
@@ -926,7 +948,6 @@ export default function Home() {
     setCurrentIndex(0);
     setCurrentTime(0);
     setDuration(0);
-    setMessage(`Đã sẵn sàng ${sharedCatalogTracks.length} bài trong thư viện chung.`);
   }, [isPlaying, sharedCatalogTracks]);
 
   const pushSyncPayload = useCallback(async (initialPayload: LibraryPayload) => {
@@ -1010,7 +1031,7 @@ export default function Home() {
   }, [hydrated, queueSync, syncPayload, syncUser]);
 
   useEffect(() => {
-    if (!hydrated || syncInitializedRef.current) return;
+    if (!ACCOUNT_FEATURES_ENABLED || !hydrated || syncInitializedRef.current) return;
     syncInitializedRef.current = true;
     let active = true;
     void fetch("/api/sync", { cache: "no-store" })
@@ -1225,7 +1246,6 @@ export default function Home() {
         clearFallbackTimer();
         setIsBuffering(true);
         if (document.visibilityState === "hidden") {
-          setMessage("iPhone đang giữ phiên phát nền. Drive Music sẽ tự nối lại khi có thể.");
           return;
         }
         const retryIndex = playPermissionRetryRef.current;
@@ -1236,7 +1256,6 @@ export default function Home() {
             recoveryTimerRef.current = null;
             if (shouldResumeRef.current && audio === audioRef.current) attemptPlayback(audio);
           }, PLAY_PERMISSION_RETRY_DELAYS[retryIndex]);
-          setMessage("Đang tự nối lại phiên phát...");
           return;
         }
         shouldResumeRef.current = false;
@@ -1297,7 +1316,6 @@ export default function Home() {
       prepareTrack(track, preservePlaybackSession);
       if (activeTrackIdRef.current === track.id && audio.ended) audio.currentTime = 0;
       setIsBuffering(true);
-      setMessage("Đang tải bản nhạc chất lượng gốc...");
       armFallbackTimer();
       requestPlayback(audio);
     },
@@ -1505,7 +1523,6 @@ export default function Home() {
 
       if (shouldResumeRef.current && document.visibilityState === "hidden") {
         setIsBuffering(true);
-        setMessage("iPhone đã tạm dừng kết nối nền. Drive Music sẽ tự nối lại khi ứng dụng hoạt động.");
         return;
       }
       if (
@@ -1516,7 +1533,6 @@ export default function Home() {
       ) {
         consecutiveTrackFailuresRef.current += 1;
         setIsBuffering(true);
-        setMessage("Bài này phản hồi quá chậm, đang tự chuyển sang bài kế tiếp...");
         clearRecoveryTimer();
         recoveryTimerRef.current = setTimeout(() => {
           recoveryTimerRef.current = null;
@@ -1578,7 +1594,6 @@ export default function Home() {
       playPermissionRetryRef.current = 0;
       shouldResumeRef.current = true;
       setIsBuffering(true);
-      setMessage("Đang tự nối lại phiên nghe nhạc...");
       armFallbackTimer();
       requestPlayback(audio);
     };
@@ -1611,7 +1626,6 @@ export default function Home() {
       prepareTrack(track);
       if (activeTrackIdRef.current === track.id && audio.ended) audio.currentTime = 0;
       setIsBuffering(true);
-      setMessage("Đang tải bản nhạc chất lượng gốc...");
       armFallbackTimer();
       requestPlayback(audio);
     } else {
@@ -1987,7 +2001,7 @@ export default function Home() {
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const volumeProgress = Math.round(volume * 100);
   const accountLabel = !syncUser ? "Đăng nhập" : syncUser.role === "admin" ? "Admin" : "Tài khoản";
-  const sharedCatalogReady = Boolean(catalogProgress?.complete && sharedCatalogTracks.length);
+  const sharedCatalogReady = true;
 
   return (
     <main className="app-shell" onClickCapture={handleButtonFeedback} style={{ "--track-hue": activeHue } as CSSProperties}>
@@ -2000,11 +2014,11 @@ export default function Home() {
           <span className="brand-mark"><Icon name="music" size={22} /></span>
           <span>
             <strong>Drive Music</strong>
-            <small>{sharedCatalogReady ? `${sharedCatalogTracks.length} bài · thư viện chung` : syncUser ? syncStatusLabel(syncStatus) : "Playlist trên thiết bị của bạn"}</small>
+            <small>{`${sharedCatalogTracks.length || 30} bài · HVL`}</small>
           </span>
         </div>
         <div className="header-actions">
-          {!sharedCatalogReady && <button
+          {ACCOUNT_FEATURES_ENABLED && !sharedCatalogReady && <button
             aria-expanded={syncPanelOpen}
             aria-label={syncUser ? "Tài khoản và đồng bộ" : "Mở đăng nhập hoặc đăng ký"}
             className={`icon-button sync-button identity-visible ${syncUser ? "connected" : "signed-out"} ${syncStatus} ${syncStatus === "syncing" || syncStatus === "checking" ? "working" : ""}`}
@@ -2015,31 +2029,24 @@ export default function Home() {
             <span className="sync-button-label">{accountLabel}</span>
             <span className="sync-dot" />
           </button>}
+          <button aria-label="Giới thiệu HVL và RPT MCK" className="icon-button about-button" onClick={() => setAboutOpen(true)} type="button">
+            <Icon name="info" size={18} />
+            <span>Giới thiệu</span>
+          </button>
           <button aria-label="Chia sẻ Drive Music" className="icon-button" onClick={shareApp} type="button">
             <Icon name="share" size={18} />
           </button>
           <button aria-label="Thêm vào màn hình chính" className={`icon-button ${canInstall ? "install-ready" : ""}`} onClick={requestInstall} type="button">
             <Icon name="install" size={18} />
           </button>
-          {!sharedCatalogReady && <button className="add-button" onClick={() => setFormOpen((open) => !open)} type="button">
+          {ACCOUNT_FEATURES_ENABLED && !sharedCatalogReady && <button className="add-button" onClick={() => setFormOpen((open) => !open)} type="button">
             <Icon name={formOpen ? "close" : "add"} size={18} />
             <span>{formOpen ? "Đóng" : "Thêm nhạc"}</span>
           </button>}
         </div>
       </header>
 
-      {catalogProgress && !catalogProgress.complete && (
-        <div aria-live="polite" className="catalog-migration" role="status">
-          <span><Icon name="cloud" size={16} /></span>
-          <div>
-            <strong>Đang lưu thư viện chung</strong>
-            <small>{catalogProgress.imported}/{catalogProgress.total} bài · Có thể tiếp tục nghe trong lúc chờ</small>
-          </div>
-          <i aria-hidden="true" style={{ "--catalog-progress": `${catalogProgress.total ? Math.min(100, catalogProgress.imported / catalogProgress.total * 100) : 0}%` } as CSSProperties} />
-        </div>
-      )}
-
-      {!sharedCatalogReady && syncPanelOpen && (
+      {ACCOUNT_FEATURES_ENABLED && !sharedCatalogReady && syncPanelOpen && (
         <section aria-label="Tài khoản và đồng bộ" className="sync-panel">
           <span className="sync-panel-icon"><Icon name={syncUser?.role === "admin" ? "shield" : "cloud"} size={20} /></span>
           {syncUser ? (
@@ -2097,6 +2104,74 @@ export default function Home() {
         </section>
       )}
 
+      {aboutOpen && (
+        <div className="modal-backdrop about-backdrop" onClick={() => setAboutOpen(false)} role="presentation">
+          <section aria-labelledby="about-title" aria-modal="true" className="install-dialog about-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
+            <div className="about-topbar">
+              <span><Icon name="music" size={19} /><strong>Drive Music</strong></span>
+              <button aria-label="Đóng phần giới thiệu" className="dialog-close" onClick={() => setAboutOpen(false)} type="button">
+                <Icon name="close" size={19} />
+              </button>
+            </div>
+
+            <div className="about-content">
+              <header className="about-hero">
+                <p className="eyebrow">RPT MCK · ALBUM 2026</p>
+                <h2 id="about-title">HVL</h2>
+                <p className="about-lead">Ba mươi ca khúc như ba mươi lát cắt trong thế giới của MCK — có bản năng, có khoảng lặng, có va chạm và có những khoảnh khắc rất riêng.</p>
+                <div className="about-stats" aria-label="Thông tin album">
+                  <span><strong>30</strong><small>Ca khúc</small></span>
+                  <span><strong>~90</strong><small>Phút</small></span>
+                  <span><strong>2026</strong><small>Phát hành</small></span>
+                  <span><strong>FLAC</strong><small>Nguyên bản</small></span>
+                </div>
+              </header>
+
+              <div className="about-story-grid">
+                <article className="about-story about-story-wide">
+                  <p className="eyebrow">TỔNG QUAN</p>
+                  <h3>Một album dài, nhưng không chỉ để phô diễn số lượng</h3>
+                  <p>HVL mở đầu bằng “Elegie” rồi đi qua những bản nhạc tình cảm, những khoảnh khắc tự sự và nhiều màn kết hợp. Cấu trúc 30 bài tạo cảm giác như đang lần lượt mở từng trang trong một cuốn nhật ký âm thanh, nơi MCK thay đổi góc nhìn và năng lượng liên tục.</p>
+                  <p>So với hình ảnh giàu năng lượng và cảm xúc bộc phát từng được công chúng biết đến, HVL cho thấy một nghệ sĩ muốn mở rộng không gian sáng tạo: lúc trực diện, lúc mềm hơn, lúc đặt giọng hát và giai điệu ở trung tâm.</p>
+                </article>
+
+                <article className="about-story">
+                  <p className="eyebrow">NGHỆ SĨ ĐA DIỆN</p>
+                  <h3>Không đứng yên trong một cách thể hiện</h3>
+                  <p>MCK di chuyển giữa rap, melody và nhiều sắc thái xử lý giọng. Điều đáng chú ý không chỉ là đổi màu âm thanh, mà là cách anh dùng từng màu sắc để kể một trạng thái khác nhau.</p>
+                </article>
+
+                <article className="about-story">
+                  <p className="eyebrow">TIẾNG NÓI THẾ HỆ</p>
+                  <h3>Cá nhân, trực diện và tự định nghĩa</h3>
+                  <p>Drive Music nhìn MCK như một tiếng nói nổi bật của nghệ sĩ trẻ Việt: không né tránh sự mâu thuẫn trong cảm xúc, dám thử nghiệm và không để một khuôn mẫu duy nhất quyết định mình phải làm nhạc thế nào.</p>
+                </article>
+
+                <article className="about-story about-collaborators">
+                  <p className="eyebrow">CỘNG SỰ TRONG ALBUM</p>
+                  <h3>Những giọng nói cùng xuất hiện</h3>
+                  <div className="artist-chips">
+                    {['marzuz', 'Tage', 'A$AP Ướt Mi', 'Tùng Dương', 'Obito', 'THANHDRAW', 'RPT Orijinn'].map((name) => <span key={name}>{name}</span>)}
+                  </div>
+                  <p>Các nghệ sĩ góp mặt được hiển thị ngay dưới tên từng bài để người nghe luôn biết đầy đủ phần trình diễn.</p>
+                </article>
+
+                <article className="about-story about-listening">
+                  <p className="eyebrow">TRÊN DRIVE MUSIC</p>
+                  <h3>Nghe chung, không cần tài khoản</h3>
+                  <p>Toàn bộ 30 file FLAC được phát từ kho riêng của Drive Music. Hệ thống giữ nguyên định dạng, hỗ trợ tải theo đoạn để tua nhanh và không còn phụ thuộc tốc độ phản hồi của Google Drive khi nghe.</p>
+                </article>
+              </div>
+
+              <div className="about-links">
+                <a className="spotify-link" href="https://open.spotify.com/album/36e3pjcLAYabHjXlaSmWOe" rel="noreferrer" target="_blank"><Icon name="spotify" size={18} /><span>Nghe HVL trên Spotify</span></a>
+                <a className="youtube-link" href="https://www.youtube.com/playlist?list=PLG5bpInXG8Sc" rel="noreferrer" target="_blank"><Icon name="youtube" size={18} /><span>Xem playlist chính thức</span></a>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
       {installOpen && (
         <div className="modal-backdrop" onClick={() => setInstallOpen(false)} role="presentation">
           <section aria-labelledby="install-title" aria-modal="true" className="install-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
@@ -2117,7 +2192,7 @@ export default function Home() {
         </div>
       )}
 
-      {!sharedCatalogReady && formOpen && (
+      {ACCOUNT_FEATURES_ENABLED && !sharedCatalogReady && formOpen && (
         <section className={`add-panel ${folderLinkId ? "folder-mode" : ""}`} aria-label="Thêm bài hát hoặc thư mục">
           <div className="panel-heading">
             <span className="panel-icon"><Icon name="link" size={20} /></span>
@@ -2235,12 +2310,12 @@ export default function Home() {
           </div>
 
           <div className="controls">
-            <button aria-label="Bài trước" disabled={!playbackQueue.length} onClick={playPrevious} type="button"><Icon name="previous" size={25} /></button>
-            <button aria-label={isPlaying ? "Tạm dừng" : "Phát"} className={`play-button ${isBuffering ? "buffering" : ""}`} disabled={!playbackQueue.length} onClick={togglePlayback} type="button">
+            <button aria-label="Bài trước" data-notice="off" disabled={!playbackQueue.length} onClick={playPrevious} type="button"><Icon name="previous" size={25} /></button>
+            <button aria-label={isPlaying ? "Tạm dừng" : "Phát"} className={`play-button ${isBuffering ? "buffering" : ""}`} data-notice="off" disabled={!playbackQueue.length} onClick={togglePlayback} type="button">
               <Icon name={isPlaying ? "pause" : "play"} size={30} />
               {isBuffering && <span className="buffer-ring" />}
             </button>
-            <button aria-label="Bài sau" disabled={!playbackQueue.length} onClick={playNext} type="button"><Icon name="next" size={25} /></button>
+            <button aria-label="Bài sau" data-notice="off" disabled={!playbackQueue.length} onClick={playNext} type="button"><Icon name="next" size={25} /></button>
           </div>
           {!usesSystemVolume && (
             <div className="volume-control">
@@ -2338,11 +2413,11 @@ export default function Home() {
         </div>
 
         {!playlist.length ? (
-          <button className="empty-state" onClick={() => setFormOpen(true)} type="button">
+          <div className="empty-state">
             <span><Icon name="music" size={28} /></span>
-            <strong>Chưa có bài hát</strong>
-            <small>Thêm link MP3, FLAC hoặc Google Drive công khai</small>
-          </button>
+            <strong>HVL · RPT MCK</strong>
+            <small>Danh sách 30 bài dùng chung</small>
+          </div>
         ) : (
           <ol className="track-list">
             {playlist.map((track, index) => (

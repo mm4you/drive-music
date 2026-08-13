@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("renders the Drive Music shell with a visible sign-in action", async () => {
+test("renders the shared HVL player without account controls", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -30,7 +30,10 @@ test("renders the Drive Music shell with a visible sign-in action", async () => 
   assert.match(html, /<title>Drive Music<\/title>/i);
   assert.match(html, /<link[^>]+rel=["']manifest["'][^>]+href=["']\/manifest\.webmanifest["']/i);
   assert.match(html, /content=["']width=device-width, initial-scale=1, viewport-fit=cover["']/i);
-  assert.match(html, /class=["']sync-button-label["']>Đăng nhập<\/span>/i);
+  assert.match(html, /aria-label=["']Giới thiệu HVL và RPT MCK["']/i);
+  assert.match(html, />30 bài · HVL<\/small>/i);
+  assert.doesNotMatch(html, />Đăng nhập<\/span>/i);
+  assert.doesNotMatch(html, /Đang tải bản nhạc chất lượng gốc/i);
   assert.match(html, /aria-label=["']Âm lượng["']/i);
   assert.match(html, /class=["']volume-control["']/i);
   assert.match(html, /aria-label=["']Ẩn danh sách phát["']/i);
@@ -147,4 +150,25 @@ test("protects account names behind server-verified admin access", async () => {
     ctx,
   );
   assert.equal(regularUser.status, 403);
+});
+
+test("normalizes the artist and preserves featured artist names", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../app/api/catalog/route.ts", import.meta.url), "utf8"),
+  );
+  assert.match(source, /artist:\s*featuredArtist\(title\)/);
+  assert.match(source, /RPT MCK feat\. \$\{featured\}/);
+  assert.match(source, /A\$AP Ướt Mi/);
+});
+
+test("uses a full-screen, detailed album introduction", async () => {
+  const [pageSource, styleSource] = await Promise.all([
+    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../app/page.tsx", import.meta.url), "utf8")),
+    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../app/globals.css", import.meta.url), "utf8")),
+  ]);
+  assert.match(pageSource, /className="modal-backdrop about-backdrop"/);
+  assert.match(pageSource, /CỘNG SỰ TRONG ALBUM/);
+  assert.match(pageSource, /name="spotify"/);
+  assert.match(pageSource, /name="youtube"/);
+  assert.match(styleSource, /\.about-dialog\s*\{[^}]*min-height:\s*100dvh/i);
 });

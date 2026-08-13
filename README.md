@@ -1,18 +1,18 @@
 # Drive Music
 
-Drive Music là trình nghe nhạc web tối giản với 30 bài dùng chung. Ứng dụng hoạt động tốt trên điện thoại, có thể cài như PWA và phát file gốc mà không chuyển mã hay giảm chất lượng.
+Drive Music là trình nghe album **HVL** của **RPT MCK** trên web với 30 bài FLAC dùng chung. Ứng dụng hoạt động tốt trên điện thoại, có thể cài như PWA và phát file gốc mà không chuyển mã hay giảm chất lượng.
 
 **Website:** [drive-music.yo-nathanzarate376.chatgpt.site](https://drive-music.yo-nathanzarate376.chatgpt.site)
 
 ## Tính năng chính
 
-- Tự sao chép 30 file nguồn sang kho âm thanh R2 dùng chung của Drive Music.
-- Hỗ trợ MP3, FLAC, M4A, AAC, OGG, OPUS và WAV.
-- Tự đọc tên bài hát, nghệ sĩ, album và định dạng khi metadata khả dụng.
+- 30 file FLAC đã được lưu trong kho âm thanh R2 dùng chung của Drive Music.
+- Metadata thống nhất theo album `HVL` và nghệ sĩ `RPT MCK`.
 - Danh sách phát gọn nhẹ, có thể ẩn hoặc hiện khi cần.
 - Phát, tạm dừng, bài trước, bài sau, tua nhạc, trộn bài, phát lại bài hiện tại 1 hoặc 2 lần và tự động phát.
 - Làm nóng trước một phần nhỏ của bài kế tiếp để giảm thời gian chờ khi chuyển bài.
-- Không cần tài khoản; người dùng đăng nhập hay không đều nghe cùng một danh sách 30 bài.
+- Không cần tài khoản, không cần nhập link; mọi người nghe cùng một danh sách 30 bài.
+- Menu Giới thiệu cung cấp tổng quan ngắn về HVL và RPT MCK.
 - PWA có thể thêm vào màn hình chính.
 - Hỗ trợ Media Session để điều khiển trên màn hình khoá và phát nền tốt nhất trong giới hạn của trình duyệt.
 - Giao diện tối, responsive cho iPhone, Android và desktop; toàn bộ biểu tượng dùng SVG.
@@ -28,15 +28,13 @@ Chất lượng thực tế còn phụ thuộc vào:
 - Thiết bị phát, tai nghe và cài đặt âm lượng hệ thống.
 - Kết nối mạng tới kho âm thanh của Drive Music.
 
-## Thư viện 30 bài dùng chung
+## Album 30 bài dùng chung
 
-Nguồn ban đầu là thư mục Google Drive công khai đã cấu hình sẵn trong mã. Trong lần chuẩn bị đầu tiên, website sao chép tuần tự từng file vào Cloudflare R2 và ghi manifest chung.
+Nguồn ban đầu là thư mục Google Drive công khai. Toàn bộ 30 file đã được sao chép vào Cloudflare R2 và ghi vào manifest chung trước khi phát hành giao diện hiện tại.
 
-- Giao diện hiển thị tiến độ `đã lưu/tổng số bài`.
-- Quá trình có thể tiếp tục ở lần mở trang sau nếu bị gián đoạn.
-- Khi manifest hoàn tất, mọi người tự động nhận cùng một danh sách.
+- Mọi người tự động nhận cùng một danh sách theo đúng thứ tự album.
 - File phát qua endpoint cùng miền có hỗ trợ HTTP `Range`, tua nhạc và cache.
-- Nút đăng nhập và nhập link được ẩn khi thư viện chung đã sẵn sàng.
+- Giao diện không chứa đăng nhập, đồng bộ tài khoản hoặc nhập link.
 
 Folder nguồn hiện tại:
 
@@ -44,13 +42,13 @@ Folder nguồn hiện tại:
 https://drive.google.com/drive/folders/1yLdID1cWy3JmLB3TAUiazxBcRAja0Xpt
 ```
 
-Thư mục chỉ cần tiếp tục công khai cho tới khi tiến độ đạt đủ toàn bộ bài. Sau đó việc nghe nhạc không còn phụ thuộc vào tốc độ phản hồi của Google Drive.
+Việc nghe nhạc hiện không còn phụ thuộc vào tốc độ phản hồi của Google Drive.
 
 ## Danh sách phát và dữ liệu
 
 - R2 lưu byte gốc của 30 file âm thanh.
 - Manifest R2 lưu thứ tự và metadata công khai của danh sách chung.
-- `localStorage` chỉ lưu cài đặt giao diện và điều khiển trên từng thiết bị.
+- `localStorage` chỉ lưu các thiết lập điều khiển trên từng thiết bị.
 - Người nghe không cần tạo tài khoản hay nhập link.
 
 ## Cài đặt PWA
@@ -68,7 +66,6 @@ Mở menu của trình duyệt và chọn **Cài đặt ứng dụng** hoặc **
 
 ## Giới hạn cần biết
 
-- Trong giai đoạn sao chép ban đầu, thư mục Google Drive nguồn phải công khai.
 - iOS có thể tạm ngưng trang web ở chế độ nền. Drive Music đã có cơ chế nối lại và chuyển bài sớm, nhưng tự động chuyển bài nền không thể được bảo đảm tuyệt đối trên mọi phiên bản iOS.
 - Điều khiển màn hình khoá phụ thuộc vào Media Session và khả năng của trình duyệt.
 - Thanh âm lượng trong ứng dụng được ẩn trên iPhone vì iOS yêu cầu dùng âm lượng hệ thống.
@@ -79,9 +76,7 @@ Mở menu của trình duyệt và chọn **Cài đặt ứng dụng** hoặc **
 - Next.js 16
 - Vinext và Vite
 - Cloudflare Workers
-- Cloudflare D1
 - Cloudflare R2
-- Drizzle ORM
 - Media Session API
 - Web App Manifest và Service Worker
 
@@ -124,32 +119,27 @@ npm run build
 | `npm run start` | Chạy bản đã build |
 | `npm run lint` | Kiểm tra mã nguồn bằng ESLint |
 | `npm test` | Build và chạy bộ test |
-| `npm run db:generate` | Tạo migration Drizzle sau khi đổi schema |
 | `npm run validate:artifact` | Kiểm tra lại artifact hiện có |
 
 ## Cấu trúc chính
 
 ```text
 app/
-  api/admin/stats/   API thống kê dành cho admin
-  api/drive/         Đọc metadata, thư mục và stream Google Drive
-  api/sync/          Đồng bộ thư viện theo tài khoản
+  api/catalog/       Manifest chung và stream R2 có HTTP Range
+  api/drive/         Bộ đọc nguồn Google Drive dùng khi bảo trì
   page.tsx           Giao diện và logic trình phát
-db/
-  schema.ts          Schema thư viện nhạc trên D1
-drizzle/             Các migration cơ sở dữ liệu
 public/
   manifest.webmanifest
   sw.js              Service Worker cho PWA
-tests/               Test giao diện, Drive proxy và phân quyền
+tests/               Test giao diện, thư viện và Drive proxy
 ```
 
 ## Bảo mật
 
 - CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options` và các header bảo mật khác được cấu hình cho bản production.
-- API đồng bộ giới hạn kích thước request, số playlist, số bài hát và chỉ nhận URL HTTP/HTTPS hợp lệ.
-- Request đồng bộ khác origin bị từ chối.
-- Dữ liệu mỗi tài khoản được tách bằng định danh băm.
+- Cổng chuyển file nội bộ được khóa sau khi hoàn tất 30/30 bài.
+- Endpoint phát chỉ cho phép object key trong không gian `audio/` và chặn path traversal.
+- Manifest công khai không chứa token hay thông tin nguồn nhạy cảm.
 - Không commit file `.env`, token, cookie hoặc thông tin đăng nhập vào repository.
 
 ## Tác giả
