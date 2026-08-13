@@ -11,7 +11,7 @@ Drive Music là trình nghe nhạc web tối giản dành cho MP3, FLAC và file
 - Hỗ trợ MP3, FLAC, M4A, AAC, OGG, OPUS và WAV.
 - Tự đọc tên bài hát, nghệ sĩ, album, định dạng và dung lượng khi metadata khả dụng.
 - Tạo nhiều playlist riêng, đổi tên, chuyển playlist và xoá playlist có xác nhận.
-- Phát, tạm dừng, bài trước, bài sau, tua nhạc, trộn bài và tự động phát.
+- Phát, tạm dừng, bài trước, bài sau, tua nhạc, trộn bài, phát mỗi bài 2 lần và tự động phát.
 - Làm nóng trước một phần nhỏ của bài kế tiếp để giảm thời gian chờ khi chuyển bài.
 - Giữ bài đang nghe khi người dùng mở playlist khác.
 - Lưu thư viện trên trình duyệt khi dùng ở chế độ khách.
@@ -156,41 +156,18 @@ npm run build
 ## Cấu trúc chính
 
 ```text
-./                                  # thư mục gốc của repository, không có src/src
-├── .openai/
-│   └── hosting.json                # cấu hình triển khai ChatGPT Sites
-├── app/                            # giao diện, xác thực và API routes
-│   ├── api/
-│   │   ├── admin/stats/route.ts    # thống kê tài khoản dành cho admin
-│   │   ├── drive/route.ts          # metadata, thư mục và stream Google Drive
-│   │   └── sync/route.ts           # đồng bộ thư viện theo tài khoản
-│   ├── authz.ts                    # kiểm tra và phân quyền admin phía máy chủ
-│   ├── chatgpt-auth.ts             # phiên đăng nhập ChatGPT
-│   ├── globals.css                 # giao diện responsive và PWA safe area
-│   ├── layout.tsx                  # metadata, manifest và layout gốc
-│   └── page.tsx                    # trình phát, playlist và logic phía client
-├── build/
-│   └── sites-vite-plugin.ts        # tích hợp quá trình build cho Sites
-├── db/
-│   ├── index.ts                    # kết nối Cloudflare D1
-│   └── schema.ts                   # schema thư viện nhạc
-├── drizzle/                        # migration và snapshot cơ sở dữ liệu
-├── examples/d1/                    # ví dụ tối giản cho D1
-├── public/
-│   ├── icon-192.png                # icon PWA 192 × 192
-│   ├── icon-512.png                # icon PWA 512 × 512
-│   ├── manifest.webmanifest        # cấu hình cài đặt PWA
-│   └── sw.js                       # Service Worker
-├── scripts/                        # build, cài CI và kiểm tra artifact
-├── tests/
-│   └── rendered-html.test.mjs      # test UI, Drive proxy và phân quyền
-├── worker/
-│   └── index.ts                    # entry Cloudflare Worker
-├── drizzle.config.ts               # cấu hình Drizzle Kit
-├── next.config.ts                  # header bảo mật và cấu hình Next.js
-├── vite.config.ts                  # cấu hình Vinext/Vite
-├── package.json                    # scripts và dependencies
-└── README.md
+app/
+  api/admin/stats/   API thống kê dành cho admin
+  api/drive/         Đọc metadata, thư mục và stream Google Drive
+  api/sync/          Đồng bộ thư viện theo tài khoản
+  page.tsx           Giao diện và logic trình phát
+db/
+  schema.ts          Schema thư viện nhạc trên D1
+drizzle/             Các migration cơ sở dữ liệu
+public/
+  manifest.webmanifest
+  sw.js              Service Worker cho PWA
+tests/               Test giao diện, Drive proxy và phân quyền
 ```
 
 ## Bảo mật

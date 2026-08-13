@@ -25,6 +25,7 @@ type LibraryPayload = {
   settings: {
     shuffleEnabled: boolean;
     autoPlayEnabled: boolean;
+    repeatOneEnabled: boolean;
   };
 };
 
@@ -93,6 +94,7 @@ type IconName =
   | "play"
   | "previous"
   | "queue"
+  | "repeatOne"
   | "share"
   | "shield"
   | "shuffle"
@@ -202,6 +204,15 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <circle cx="4.5" cy="6" r="1" />
         <circle cx="4.5" cy="12" r="1" />
         <circle cx="4.5" cy="18" r="1" />
+      </>
+    ),
+    repeatOne: (
+      <>
+        <path d="M17 2.8 20.2 6 17 9.2" />
+        <path d="M3.8 11V9a3 3 0 0 1 3-3h13.4" />
+        <path d="M7 21.2 3.8 18 7 14.8" />
+        <path d="M20.2 13v2a3 3 0 0 1-3 3H3.8" />
+        <path d="M12 10v5M10.5 11.5 12 10" />
       </>
     ),
     share: (
@@ -429,11 +440,12 @@ function libraryPayload(
   activePlaylistId: string,
   shuffleEnabled: boolean,
   autoPlayEnabled: boolean,
+  repeatOneEnabled: boolean,
 ): LibraryPayload {
   return {
     playlists,
     activePlaylistId,
-    settings: { shuffleEnabled, autoPlayEnabled },
+    settings: { shuffleEnabled, autoPlayEnabled, repeatOneEnabled },
   };
 }
 
@@ -452,7 +464,13 @@ function cachedLibraryPayload(raw: string | null): LibraryPayload | null {
     if (!Array.isArray(value.playlists) || !value.playlists.length) return null;
     if (!value.playlists.every((playlist) => playlist?.id && playlist?.name && Array.isArray(playlist.tracks))) return null;
     if (!value.settings || typeof value.settings.shuffleEnabled !== "boolean" || typeof value.settings.autoPlayEnabled !== "boolean") return null;
-    return value;
+    return {
+      ...value,
+      settings: {
+        ...value.settings,
+        repeatOneEnabled: value.settings.repeatOneEnabled === true,
+      },
+    };
   } catch {
     return null;
   }
@@ -464,6 +482,7 @@ function emptyLibraryPayload(): LibraryPayload {
     "default",
     false,
     true,
+    false,
   );
 }
 
@@ -536,7 +555,9 @@ export default function Home() {
   const autoAdvanceInFlightRef = useRef(false);
   const consecutiveTrackFailuresRef = useRef(0);
   const playPermissionRetryRef = useRef(0);
+  const repeatCompletionRef = useRef(0);
   const requestPlaybackRef = useRef<(audio: HTMLAudioElement) => void>(() => undefined);
+  const controlNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedTrackIdRef = useRef<string | null>(null);
   const preloadedTrackIdRef = useRef<string | null>(null);
   const warmedTrackIdRef = useRef<string | null>(null);
@@ -570,6 +591,7 @@ export default function Home() {
   const [formOpen, setFormOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [message, setMessage] = useState("");
+  const [controlNotice, setControlNotice] = useState("");
   const [installOpen, setInstallOpen] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
   const [driveMetadata, setDriveMetadata] = useState<DriveMetadata | null>(null);
@@ -579,6 +601,7 @@ export default function Home() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
+  const [repeatOneEnabled, setRepeatOneEnabled] = useState(false);
   const [playlistFormOpen, setPlaylistFormOpen] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [playlistRenameOpen, setPlaylistRenameOpen] = useState(false);
@@ -607,8 +630,8 @@ export default function Home() {
   );
   const playbackQueue = useMemo(() => playbackPlaylist?.tracks ?? [], [playbackPlaylist]);
   const syncPayload = useMemo(
-    () => libraryPayload(playlists, activePlaylistId, shuffleEnabled, autoPlayEnabled),
-    [activePlaylistId, autoPlayEnabled, playlists, shuffleEnabled],
+    () => libraryPayload(playlists, activePlaylistId, shuffleEnabled, autoPlayEnabled, repeatOneEnabled),
+    [activePlaylistId, autoPlayEnabled, playlists, repeatOneEnabled, shuffleEnabled],
   );
   const setPlaylist = useCallback((update: Track[] | ((current: Track[]) => Track[])) => {
     setPlaylists((current) => current.map((item) => {
@@ -680,9 +703,11 @@ export default function Home() {
         const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") as {
           shuffleEnabled?: boolean;
           autoPlayEnabled?: boolean;
+          repeatOneEnabled?: boolean;
         };
         if (typeof settings.shuffleEnabled === "boolean") setShuffleEnabled(settings.shuffleEnabled);
         if (typeof settings.autoPlayEnabled === "boolean") setAutoPlayEnabled(settings.autoPlayEnabled);
+        if (typeof settings.repeatOneEnabled === "boolean") setRepeatOneEnabled(settings.repeatOneEnabled);
         const rawSavedVolume = localStorage.getItem(VOLUME_KEY);
         const savedVolume = rawSavedVolume === null ? Number.NaN : Number(rawSavedVolume);
         if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) {
@@ -715,8 +740,36 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated || syncUser) return;
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ shuffleEnabled, autoPlayEnabled }));
-  }, [autoPlayEnabled, hydrated, shuffleEnabled, syncUser]);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ shuffleEnabled, autoPlayEnabled, repeatOneEnabled }));
+  }, [autoPlayEnabled, hydrated, repeatOneEnabled, shuffleEnabled, syncUser]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) audio.loop = false;
+    repeatCompletionRef.current = 0;
+  }, [repeatOneEnabled]);
+
+  useEffect(() => {
+    repeatCompletionRef.current = 0;
+  }, [currentTrack?.id]);
+
+  const showControlNotice = useCallback((notice: string) => {
+    if (controlNoticeTimerRef.current) clearTimeout(controlNoticeTimerRef.current);
+    setControlNotice(notice);
+    try {
+      navigator.vibrate?.(8);
+    } catch {
+      // iOS currently reserves haptics for native controls.
+    }
+    controlNoticeTimerRef.current = setTimeout(() => {
+      controlNoticeTimerRef.current = null;
+      setControlNotice("");
+    }, 1450);
+  }, []);
+
+  useEffect(() => () => {
+    if (controlNoticeTimerRef.current) clearTimeout(controlNoticeTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -756,6 +809,7 @@ export default function Home() {
     setPlaybackPlaylistId(nextPlayback?.id ?? activeId);
     setShuffleEnabled(payload.settings.shuffleEnabled);
     setAutoPlayEnabled(payload.settings.autoPlayEnabled);
+    setRepeatOneEnabled(payload.settings.repeatOneEnabled);
     setCurrentIndex(playbackTracks.length ? (playingIndex >= 0 ? playingIndex : 0) : null);
     queueMicrotask(() => { syncApplyingRef.current = false; });
   }, []);
@@ -1220,6 +1274,7 @@ export default function Home() {
       const remaining = audio.duration - audio.currentTime;
       if (
         autoPlayEnabled &&
+        !repeatOneEnabled &&
         shouldResumeRef.current &&
         isAppleTouchDevice() &&
         playlistRef.current.length > 1 &&
@@ -1288,11 +1343,21 @@ export default function Home() {
       }
     };
     const onEnded = () => {
-      if (autoPlayEnabled) {
+      if (repeatOneEnabled && repeatCompletionRef.current < 1) {
+        repeatCompletionRef.current += 1;
+        audio.currentTime = 0;
+        shouldResumeRef.current = true;
+        setIsBuffering(true);
+        requestPlayback(audio);
+      } else if (autoPlayEnabled && playlistRef.current.length > 1) {
+        repeatCompletionRef.current = 0;
         playNextAutomatically();
       } else {
+        repeatCompletionRef.current = 0;
         shouldResumeRef.current = false;
-        setMessage("Đã phát xong. Tự động phát đang tắt.");
+        setMessage(repeatOneEnabled
+          ? "Đã phát bài này 2 lần."
+          : "Đã phát xong. Tự động phát đang tắt.");
       }
     };
     const onError = () => {
@@ -1378,7 +1443,7 @@ export default function Home() {
       clearFallbackTimer();
       clearRecoveryTimer();
     };
-  }, [armFallbackTimer, autoPlayEnabled, clearFallbackTimer, clearRecoveryTimer, playNextAutomatically, requestPlayback]);
+  }, [armFallbackTimer, autoPlayEnabled, clearFallbackTimer, clearRecoveryTimer, playNextAutomatically, repeatOneEnabled, requestPlayback]);
 
   useEffect(() => {
     const recoverInterruptedPlayback = () => {
@@ -2220,37 +2285,71 @@ export default function Home() {
               <span aria-hidden="true"><Icon name="volumeHigh" size={19} /></span>
             </div>
           )}
-          <div className="playback-options">
-            <button
-              aria-pressed={shuffleEnabled}
-              className={shuffleEnabled ? "active" : ""}
-              onClick={() => {
-                clearTrackWarmup();
-                queuedTrackIdRef.current = null;
-                preloadedTrackIdRef.current = null;
-                setShuffleEnabled((enabled) => !enabled);
-              }}
-              type="button"
-            >
-              <Icon name="shuffle" size={16} /><span>Trộn bài</span>
-            </button>
-            <button
-              aria-pressed={autoPlayEnabled}
-              className={autoPlayEnabled ? "active" : ""}
-              onClick={() => setAutoPlayEnabled((enabled) => !enabled)}
-              type="button"
-            >
-              <Icon name="autoplay" size={16} /><span>Tự động phát</span>
-            </button>
-            <button
-              aria-controls="playlist-library"
-              aria-expanded={libraryVisible}
-              className={libraryVisible ? "active" : ""}
-              onClick={() => setLibraryVisible((visible) => !visible)}
-              type="button"
-            >
-              <Icon name="queue" size={16} /><span>Danh sách phát</span>
-            </button>
+          <div className="playback-options-wrap">
+            <div className="playback-options">
+              <button
+                aria-label="Trộn bài"
+                aria-pressed={shuffleEnabled}
+                className={shuffleEnabled ? "active" : ""}
+                onClick={() => {
+                  const next = !shuffleEnabled;
+                  clearTrackWarmup();
+                  queuedTrackIdRef.current = null;
+                  preloadedTrackIdRef.current = null;
+                  setShuffleEnabled(next);
+                  showControlNotice(`Trộn bài · ${next ? "Đã bật" : "Đã tắt"}`);
+                }}
+                title="Trộn bài"
+                type="button"
+              >
+                <Icon name="shuffle" size={18} />
+              </button>
+              <button
+                aria-label="Tự động phát"
+                aria-pressed={autoPlayEnabled}
+                className={autoPlayEnabled ? "active" : ""}
+                onClick={() => {
+                  const next = !autoPlayEnabled;
+                  setAutoPlayEnabled(next);
+                  showControlNotice(`Tự động phát · ${next ? "Đã bật" : "Đã tắt"}`);
+                }}
+                title="Tự động phát"
+                type="button"
+              >
+                <Icon name="autoplay" size={18} />
+              </button>
+              <button
+                aria-label="Phát bài hiện tại 2 lần"
+                aria-pressed={repeatOneEnabled}
+                className={repeatOneEnabled ? "active" : ""}
+                onClick={() => {
+                  const next = !repeatOneEnabled;
+                  setRepeatOneEnabled(next);
+                  repeatCompletionRef.current = 0;
+                  showControlNotice(`Lặp 2 lần · ${next ? "Đã bật" : "Đã tắt"}`);
+                }}
+                title="Lặp 2 lần"
+                type="button"
+              >
+                <Icon name="repeatOne" size={18} />
+              </button>
+              <button
+                aria-label={libraryVisible ? "Ẩn danh sách phát" : "Hiện danh sách phát"}
+                aria-controls="playlist-library"
+                aria-expanded={libraryVisible}
+                className={libraryVisible ? "active" : ""}
+                onClick={() => {
+                  const next = !libraryVisible;
+                  setLibraryVisible(next);
+                  showControlNotice(`Danh sách phát · ${next ? "Đang hiện" : "Đã ẩn"}`);
+                }}
+                title="Danh sách phát"
+                type="button"
+              >
+                <Icon name="queue" size={18} />
+              </button>
+            </div>
+            {controlNotice && <p aria-live="polite" className="control-notice" role="status">{controlNotice}</p>}
           </div>
         </div>
       </section>

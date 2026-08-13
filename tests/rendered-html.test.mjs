@@ -33,7 +33,9 @@ test("renders the Drive Music shell with a visible sign-in action", async () => 
   assert.match(html, /class=["']sync-button-label["']>Đăng nhập<\/span>/i);
   assert.match(html, /aria-label=["']Âm lượng["']/i);
   assert.match(html, /class=["']volume-control["']/i);
-  assert.match(html, />Danh sách phát<\/span>/i);
+  assert.match(html, /aria-label=["']Ẩn danh sách phát["']/i);
+  assert.doesNotMatch(html, />Danh sách phát<\/span>/i);
+  assert.match(html, /aria-label=["']Phát bài hiện tại 2 lần["']/i);
   assert.match(html, /aria-label=["']Đổi tên playlist Playlist của tôi["']/i);
 });
 

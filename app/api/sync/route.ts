@@ -32,6 +32,7 @@ type LibraryPayload = {
   settings: {
     shuffleEnabled: boolean;
     autoPlayEnabled: boolean;
+    repeatOneEnabled: boolean;
   };
 };
 
@@ -115,6 +116,7 @@ function validatePayload(value: unknown): LibraryPayload | null {
     settings: {
       shuffleEnabled: settings.shuffleEnabled === true,
       autoPlayEnabled: settings.autoPlayEnabled !== false,
+      repeatOneEnabled: settings.repeatOneEnabled === true,
     },
   };
 }
