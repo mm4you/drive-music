@@ -4,6 +4,7 @@ const MAX_FOLDER_FILES = 200;
 const MAX_FOLDER_DEPTH = 5;
 const MAX_FOLDER_PAGE_BYTES = 5 * 1024 * 1024;
 const SUPPORTED_AUDIO_EXTENSION = /\.(?:mp3|flac|m4a|aac|ogg|oga|opus|wav)$/i;
+const SUPPORTED_IMAGE_EXTENSION = /\.(?:avif|gif|jpe?g|png|webp)$/i;
 
 type DriveFolderChild = {
   id: string;
@@ -141,6 +142,10 @@ function isSupportedAudioFile(file: DriveFolderChild) {
   return file.mimeType.startsWith("audio/") || SUPPORTED_AUDIO_EXTENSION.test(file.name);
 }
 
+function isSupportedImageFile(file: DriveFolderChild) {
+  return file.mimeType.startsWith("image/") || SUPPORTED_IMAGE_EXTENSION.test(file.name);
+}
+
 async function fetchPublicFolder(folderId: string) {
   const folderUrl = new URL(`https://drive.google.com/drive/folders/${folderId}`);
   const response = await fetch(folderUrl, {
@@ -166,7 +171,7 @@ async function fetchPublicFolder(folderId: string) {
   return parseDriveFolderPage(html);
 }
 
-async function folderListingResponse(folderId: string) {
+async function folderListingResponse(folderId: string, kind: "audio" | "image" = "audio") {
   const queue: Array<{ id: string; path: string; depth: number }> = [{ id: folderId, path: "", depth: 0 }];
   const visited = new Set<string>();
   const files: DriveFolderFile[] = [];
@@ -200,7 +205,8 @@ async function folderListingResponse(folderId: string) {
         }
         continue;
       }
-      if (!isSupportedAudioFile(child)) {
+      const supported = kind === "image" ? isSupportedImageFile(child) : isSupportedAudioFile(child);
+      if (!supported) {
         skipped += 1;
         continue;
       }
@@ -216,6 +222,7 @@ async function folderListingResponse(folderId: string) {
   return Response.json({
     folderId,
     folderName,
+    kind,
     files,
     skipped,
     inaccessibleFolders,
@@ -509,7 +516,8 @@ async function handle(request: Request, headOnly = false) {
     }
     if (headOnly) return new Response(null, { status: 204 });
     try {
-      return await folderListingResponse(folderId);
+      const kind = url.searchParams.get("kind") === "image" ? "image" : "audio";
+      return await folderListingResponse(folderId, kind);
     } catch (error) {
       if (error instanceof DriveFolderError) {
         return Response.json({ error: error.message }, { status: error.status });

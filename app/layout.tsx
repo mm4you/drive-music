@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Drive Music",
-  description: "Nghe nhạc từ link MP3, FLAC và Google Drive công khai.",
-  applicationName: "Drive Music",
+  title: "HVL 30",
+  description: "Trình nghe album HVL của RPT MCK với 30 bản FLAC và artwork riêng.",
+  applicationName: "HVL 30",
   manifest: "/manifest.webmanifest",
   other: {
     "apple-mobile-web-app-capable": "yes",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#080a0c",
+  themeColor: "#120505",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

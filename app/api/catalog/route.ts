@@ -94,7 +94,7 @@ async function readManifest(): Promise<CatalogManifest | null> {
 }
 
 function publicManifest(manifest: CatalogManifest | null, requestUrl: string) {
-  const tracks = manifest?.tracks.map((track) => {
+  const tracks = manifest?.tracks.map((track, index) => {
     const title = displayTitle(track.title);
     return {
       id: track.id,
@@ -102,6 +102,7 @@ function publicManifest(manifest: CatalogManifest | null, requestUrl: string) {
       artist: featuredArtist(title),
       album: track.album || "HVL",
       format: track.format,
+      artworkUrl: new URL(`/artwork/${String(index + 1).padStart(2, "0")}.jpg`, requestUrl).href,
       originalUrl: new URL(`/api/catalog?audio=${encodeURIComponent(track.objectKey)}`, requestUrl).href,
     };
   }) ?? [];

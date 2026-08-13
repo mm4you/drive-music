@@ -1,8 +1,28 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="128" fill="#0D1012"/>
-  <circle cx="256" cy="256" r="158" fill="#171C1F" stroke="#30373B" stroke-width="6"/>
-  <rect x="154" y="228" width="36" height="88" rx="18" fill="#F5F7F2"/>
-  <rect x="210" y="172" width="36" height="200" rx="18" fill="#D8FF63"/>
-  <rect x="266" y="204" width="36" height="136" rx="18" fill="#F5F7F2"/>
-  <rect x="322" y="244" width="36" height="56" rx="18" fill="#F5F7F2"/>
+  <defs>
+    <radialGradient id="void" cx="0" cy="0" r="1" gradientTransform="translate(256 250) rotate(90) scale(244)">
+      <stop stop-color="#280603"/>
+      <stop offset="0.52" stop-color="#0D0505"/>
+      <stop offset="1" stop-color="#030303"/>
+    </radialGradient>
+    <filter id="redGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#void)"/>
+  <ellipse cx="258" cy="253" rx="164" ry="184" stroke="#FF3725" stroke-opacity="0.16" stroke-width="3"/>
+  <ellipse cx="258" cy="253" rx="128" ry="150" stroke="#F2EAE3" stroke-opacity="0.08"/>
+  <path d="M218 112L277 389L343 118" stroke="#FF3725" stroke-opacity="0.58" stroke-width="38" stroke-linecap="round" stroke-linejoin="round" filter="url(#redGlow)"/>
+  <path d="M113 122C112 197 110 311 111 389M111 246C150 238 187 239 224 247M218 116C218 195 217 306 216 389" stroke="#F2EAE3" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M218 116L277 389L343 118" stroke="#FF3725" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M351 119C347 192 347 307 348 389C378 385 405 386 425 390" stroke="#F2EAE3" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M111 246C150 238 187 239 224 247M348 389C378 385 405 386 425 390" stroke="#FFF9F4" stroke-opacity="0.38" stroke-width="8" stroke-linecap="round" filter="url(#softGlow)"/>
+  <path d="M98 196L130 182M199 309L231 296M331 209L365 194M334 335L367 323" stroke="#070404" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="81" cy="158" r="4" fill="#FF3725"/>
+  <circle cx="419" cy="160" r="3" fill="#F2EAE3" fill-opacity="0.6"/>
+  <circle cx="82" cy="366" r="2" fill="#F2EAE3" fill-opacity="0.55"/>
+  <path d="M78 416H148" stroke="#FF3725" stroke-width="7" stroke-linecap="round"/>
 </svg>

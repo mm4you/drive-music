@@ -1,13 +1,13 @@
 {
-  "name": "Drive Music",
-  "short_name": "Drive Music",
-  "description": "Nghe nhạc từ MP3, FLAC và Google Drive công khai.",
+  "name": "HVL 30",
+  "short_name": "HVL 30",
+  "description": "Trình nghe album HVL của RPT MCK với 30 bản FLAC và artwork riêng.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#080a0c",
-  "theme_color": "#11150f",
+  "background_color": "#060606",
+  "theme_color": "#120505",
   "icons": [
     {
       "src": "/icon-192.png",

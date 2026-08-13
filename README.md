@@ -1,32 +1,34 @@
-# Drive Music
+# HVL 30
 
-Drive Music là trình nghe album **HVL** của **RPT MCK** trên web với 30 bài FLAC dùng chung. Ứng dụng hoạt động tốt trên điện thoại, có thể cài như PWA và phát file gốc mà không chuyển mã hay giảm chất lượng.
+HVL 30 là trình nghe album **HVL** của **RPT MCK** trên web với 30 bài FLAC và 30 artwork dùng chung. Ứng dụng hoạt động tốt trên điện thoại, có thể cài như PWA và phát file gốc mà không chuyển mã hay giảm chất lượng.
 
 **Website:** [drive-music.yo-nathanzarate376.chatgpt.site](https://drive-music.yo-nathanzarate376.chatgpt.site)
 
 ## Tính năng chính
 
-- 30 file FLAC đã được lưu trong kho âm thanh R2 dùng chung của Drive Music.
+- 30 file FLAC đã được lưu trong kho âm thanh R2 dùng chung của HVL 30.
+- 30 artwork được đóng gói trong site và gắn đúng thứ tự từng bài.
 - Metadata thống nhất theo album `HVL` và nghệ sĩ `RPT MCK`.
 - Danh sách phát gọn nhẹ, có thể ẩn hoặc hiện khi cần.
 - Phát, tạm dừng, bài trước, bài sau, tua nhạc, trộn bài, phát lại bài hiện tại 1 hoặc 2 lần và tự động phát.
 - Làm nóng trước một phần nhỏ của bài kế tiếp để giảm thời gian chờ khi chuyển bài.
 - Không cần tài khoản, không cần nhập link; mọi người nghe cùng một danh sách 30 bài.
-- Menu Giới thiệu cung cấp tổng quan ngắn về HVL và RPT MCK.
+- Trang Giới thiệu toàn màn hình kể câu chuyện HVL và cho phép chọn nghe trực tiếp từ gallery 30 artwork.
 - PWA có thể thêm vào màn hình chính.
+- Icon web/PWA và bảng màu đen, trắng ngà, đỏ được thiết kế riêng theo ngôn ngữ thị giác HVL.
 - Hỗ trợ Media Session để điều khiển trên màn hình khoá và phát nền tốt nhất trong giới hạn của trình duyệt.
 - Giao diện tối, responsive cho iPhone, Android và desktop; toàn bộ biểu tượng dùng SVG.
 
 ## Chất lượng âm thanh
 
-Drive Music không nén hoặc chuyển mã file nhạc. Trình phát nhận dữ liệu từ kho R2 thông qua luồng HTTP có hỗ trợ `Range`, vì vậy chất lượng đầu ra giữ nguyên theo file gốc.
+HVL 30 không nén hoặc chuyển mã file nhạc. Trình phát nhận dữ liệu từ kho R2 thông qua luồng HTTP có hỗ trợ `Range`, vì vậy chất lượng đầu ra giữ nguyên theo file gốc.
 
 Chất lượng thực tế còn phụ thuộc vào:
 
 - File nguồn.
 - Khả năng giải mã định dạng của thiết bị và trình duyệt.
 - Thiết bị phát, tai nghe và cài đặt âm lượng hệ thống.
-- Kết nối mạng tới kho âm thanh của Drive Music.
+- Kết nối mạng tới kho âm thanh của HVL 30.
 
 ## Album 30 bài dùng chung
 
@@ -44,6 +46,8 @@ https://drive.google.com/drive/folders/1yLdID1cWy3JmLB3TAUiazxBcRAja0Xpt
 
 Việc nghe nhạc hiện không còn phụ thuộc vào tốc độ phản hồi của Google Drive.
 
+Artwork nguồn được đánh số `1` đến `30`, sau đó được đóng gói thành `/public/artwork/01.jpg` đến `/public/artwork/30.jpg`. Vì vậy giao diện chính và Media Session không phải tải ảnh từ Google Drive khi nghe.
+
 ## Danh sách phát và dữ liệu
 
 - R2 lưu byte gốc của 30 file âm thanh.
@@ -55,10 +59,10 @@ Việc nghe nhạc hiện không còn phụ thuộc vào tốc độ phản hồ
 
 ### iPhone và iPad
 
-1. Mở Drive Music bằng Safari.
+1. Mở HVL 30 bằng Safari.
 2. Chọn nút **Chia sẻ**.
 3. Chọn **Thêm vào Màn hình chính**.
-4. Mở Drive Music từ biểu tượng vừa được tạo.
+4. Mở HVL 30 từ biểu tượng vừa được tạo.
 
 ### Android và desktop
 
@@ -66,7 +70,7 @@ Mở menu của trình duyệt và chọn **Cài đặt ứng dụng** hoặc **
 
 ## Giới hạn cần biết
 
-- iOS có thể tạm ngưng trang web ở chế độ nền. Drive Music đã có cơ chế nối lại và chuyển bài sớm, nhưng tự động chuyển bài nền không thể được bảo đảm tuyệt đối trên mọi phiên bản iOS.
+- iOS có thể tạm ngưng trang web ở chế độ nền. HVL 30 đã có cơ chế nối lại và chuyển bài sớm, nhưng tự động chuyển bài nền không thể được bảo đảm tuyệt đối trên mọi phiên bản iOS.
 - Điều khiển màn hình khoá phụ thuộc vào Media Session và khả năng của trình duyệt.
 - Thanh âm lượng trong ứng dụng được ẩn trên iPhone vì iOS yêu cầu dùng âm lượng hệ thống.
 
@@ -121,17 +125,32 @@ npm run build
 | `npm test` | Build và chạy bộ test |
 | `npm run validate:artifact` | Kiểm tra lại artifact hiện có |
 
-## Cấu trúc chính
+## Cấu trúc dự án
 
 ```text
-app/
-  api/catalog/       Manifest chung và stream R2 có HTTP Range
-  api/drive/         Bộ đọc nguồn Google Drive dùng khi bảo trì
-  page.tsx           Giao diện và logic trình phát
-public/
-  manifest.webmanifest
-  sw.js              Service Worker cho PWA
-tests/               Test giao diện, thư viện và Drive proxy
+./
+├── .openai/
+│   └── hosting.json              # cấu hình project OpenAI Sites
+├── app/
+│   ├── api/
+│   │   ├── admin/stats/          # số liệu quản trị cũ, hiện không lộ trên UI
+│   │   ├── catalog/              # manifest 30 bài và stream R2 có HTTP Range
+│   │   ├── drive/                # đọc file/thư mục Drive công khai khi bảo trì
+│   │   └── sync/                 # API đồng bộ cũ, hiện không dùng trên UI
+│   ├── globals.css               # hệ màu và responsive UI theo HVL
+│   ├── layout.tsx                # metadata, theme-color và PWA
+│   └── page.tsx                  # giao diện và logic trình phát
+├── public/
+│   ├── artwork/                  # 30 artwork, đặt tên 01.jpg → 30.jpg
+│   ├── favicon.svg               # icon HVL vector
+│   ├── icon-192.png              # icon PWA 192px
+│   ├── icon-512.png              # icon PWA 512px
+│   ├── manifest.webmanifest      # manifest cài ứng dụng
+│   └── sw.js                     # Service Worker
+├── scripts/                      # build, kiểm tra artifact và môi trường Sites
+├── tests/                        # test UI, catalog, Drive proxy và bảo mật
+├── package.json
+└── README.md
 ```
 
 ## Bảo mật

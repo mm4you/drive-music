@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- local HVL artwork is already sized and shipped as static assets */
 
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -8,6 +9,7 @@ type Track = {
   title: string;
   artist: string;
   originalUrl: string;
+  artworkUrl?: string;
   album?: string;
   format?: string;
   size?: number;
@@ -117,11 +119,6 @@ type IconName =
   | "volumeMute"
   | "youtube";
 
-interface InstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
-
 const STORAGE_KEY = "drive-music-playlists-v2";
 const LEGACY_STORAGE_KEY = "drive-music-playlist-v1";
 const SETTINGS_KEY = "drive-music-settings-v1";
@@ -131,6 +128,7 @@ const ACCOUNT_CACHE_KEY = "drive-music-account-cache-v1";
 const LAST_ACCOUNT_KEY = "drive-music-last-account-v1";
 const VOLUME_KEY = "drive-music-volume-v1";
 const LIBRARY_VISIBILITY_KEY = "drive-music-library-visible-v1";
+const ABOUT_SEEN_KEY = "hvl-30-about-seen-v1";
 const STARTUP_FALLBACK_MS = 8000;
 const SOURCE_RETRY_DELAYS = [450, 1100, 2400];
 const PLAY_PERMISSION_RETRY_DELAYS = [180, 650, 1600];
@@ -430,14 +428,6 @@ function formatTime(value: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function colorHue(value: string) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
-  }
-  return Math.abs(hash % 360);
-}
-
 function subscribeDeviceCapability() {
   return () => undefined;
 }
@@ -582,7 +572,6 @@ function syncStatusLabel(status: SyncStatus) {
 export default function Home() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const preloadAudioRef = useRef<HTMLAudioElement>(null);
-  const installPromptRef = useRef<InstallPromptEvent | null>(null);
   const playlistRef = useRef<Track[]>([]);
   const sourceListRef = useRef<string[]>([]);
   const sourceIndexRef = useRef(0);
@@ -617,6 +606,7 @@ export default function Home() {
   const latestPayloadRef = useRef<LibraryPayload | null>(null);
   const sharedCatalogRef = useRef(false);
   const sharedCatalogAppliedRef = useRef(false);
+  const aboutAutoOpenedRef = useRef(false);
   const [playlists, setPlaylists] = useState<MusicPlaylist[]>([
     { id: "default", name: "Playlist của tôi", tracks: [] },
   ]);
@@ -635,9 +625,7 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   const [message, setMessage] = useState("");
   const [controlNotice, setControlNotice] = useState("");
-  const [installOpen, setInstallOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [canInstall, setCanInstall] = useState(false);
   const [driveMetadata, setDriveMetadata] = useState<DriveMetadata | null>(null);
   const [readingMetadata, setReadingMetadata] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -686,10 +674,7 @@ export default function Home() {
     () => (currentIndex === null ? null : playbackQueue[currentIndex] ?? null),
     [currentIndex, playbackQueue],
   );
-  const activeHue = useMemo(
-    () => colorHue(currentTrack?.id ?? activePlaylistId ?? "drive-music"),
-    [activePlaylistId, currentTrack?.id],
-  );
+  const activeHue = 3;
   const usesSystemVolume = useSyncExternalStore(
     subscribeDeviceCapability,
     isAppleTouchDevice,
@@ -699,7 +684,7 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.style.setProperty("--track-hue", String(activeHue));
     const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    themeColor?.setAttribute("content", `hsl(${activeHue} 26% 13%)`);
+    themeColor?.setAttribute("content", "#120505");
   }, [activeHue]);
 
   useEffect(() => {
@@ -708,6 +693,16 @@ export default function Home() {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previousOverflow; };
   }, [aboutOpen]);
+
+  useEffect(() => {
+    if (!hydrated || !sharedCatalogTracks.length || aboutAutoOpenedRef.current) return;
+    aboutAutoOpenedRef.current = true;
+    try {
+      if (localStorage.getItem(ABOUT_SEEN_KEY) !== "1") setAboutOpen(true);
+    } catch {
+      // The introduction remains available from the fixed navigation.
+    }
+  }, [hydrated, sharedCatalogTracks.length]);
 
   useEffect(() => {
     let active = true;
@@ -940,7 +935,7 @@ export default function Home() {
       audio.load();
     }
     activeTrackIdRef.current = null;
-    const playlist = { id: "default", name: "Drive Music", tracks: sharedCatalogTracks };
+    const playlist = { id: "default", name: "HVL 30", tracks: sharedCatalogTracks };
     playlistRef.current = sharedCatalogTracks;
     setPlaylists([playlist]);
     setActivePlaylistId(playlist.id);
@@ -1118,27 +1113,10 @@ export default function Home() {
       ));
     }
     if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js?v=5", { updateViaCache: "none" })
+      void navigator.serviceWorker.register("/sw.js?v=6", { updateViaCache: "none" })
         .then((registration) => registration.update())
         .catch(() => undefined);
     }
-    const onInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      installPromptRef.current = event as InstallPromptEvent;
-      setCanInstall(true);
-    };
-    const onInstalled = () => {
-      installPromptRef.current = null;
-      setCanInstall(false);
-      setInstallOpen(false);
-      setMessage("Drive Music đã được thêm vào màn hình chính.");
-    };
-    window.addEventListener("beforeinstallprompt", onInstallPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onInstallPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
   }, []);
 
   useEffect(() => {
@@ -1875,11 +1853,13 @@ export default function Home() {
       mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
         artist: currentTrack.artist,
-        album: "Drive Music",
-        artwork: [
-          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
-        ],
+        album: currentTrack.album || "HVL",
+        artwork: currentTrack.artworkUrl
+          ? [{ src: currentTrack.artworkUrl, sizes: "1200x800", type: "image/jpeg" }]
+          : [
+            { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+          ],
       });
     }
 
@@ -1963,45 +1943,19 @@ export default function Home() {
     }
   };
 
-  const requestInstall = async () => {
-    const standalone = window.matchMedia("(display-mode: standalone)").matches ||
-      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-    if (standalone) {
-      setMessage("Bạn đang dùng Drive Music ở chế độ ứng dụng.");
-      return;
-    }
-    const prompt = installPromptRef.current;
-    if (prompt) {
-      await prompt.prompt();
-      const choice = await prompt.userChoice;
-      if (choice.outcome === "accepted") setCanInstall(false);
-      return;
-    }
-    setInstallOpen(true);
-  };
-
-  const shareApp = async () => {
-    const shareData = {
-      title: "Drive Music",
-      text: "Nghe nhạc từ MP3, FLAC và Google Drive công khai.",
-      url: window.location.origin,
-    };
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch {
-        return;
-      }
-    } else {
-      await navigator.clipboard.writeText(shareData.url);
-      setMessage("Đã sao chép link Drive Music.");
-    }
-  };
-
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const volumeProgress = Math.round(volume * 100);
   const accountLabel = !syncUser ? "Đăng nhập" : syncUser.role === "admin" ? "Admin" : "Tài khoản";
   const sharedCatalogReady = true;
+  const albumTracks = sharedCatalogTracks.length ? sharedCatalogTracks : playlist;
+  const closeAbout = () => {
+    setAboutOpen(false);
+    try {
+      localStorage.setItem(ABOUT_SEEN_KEY, "1");
+    } catch {
+      // Closing the dialog should still work when storage is unavailable.
+    }
+  };
 
   return (
     <main className="app-shell" onClickCapture={handleButtonFeedback} style={{ "--track-hue": activeHue } as CSSProperties}>
@@ -2011,9 +1965,9 @@ export default function Home() {
 
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark"><Icon name="music" size={22} /></span>
+          <span aria-hidden="true" className="brand-mark"><i>H</i><i>V</i><i>L</i></span>
           <span>
-            <strong>Drive Music</strong>
+            <strong>HVL 30</strong>
             <small>{`${sharedCatalogTracks.length || 30} bài · HVL`}</small>
           </span>
         </div>
@@ -2032,12 +1986,6 @@ export default function Home() {
           <button aria-label="Giới thiệu HVL và RPT MCK" className="icon-button about-button" onClick={() => setAboutOpen(true)} type="button">
             <Icon name="info" size={18} />
             <span>Giới thiệu</span>
-          </button>
-          <button aria-label="Chia sẻ Drive Music" className="icon-button" onClick={shareApp} type="button">
-            <Icon name="share" size={18} />
-          </button>
-          <button aria-label="Thêm vào màn hình chính" className={`icon-button ${canInstall ? "install-ready" : ""}`} onClick={requestInstall} type="button">
-            <Icon name="install" size={18} />
           </button>
           {ACCOUNT_FEATURES_ENABLED && !sharedCatalogReady && <button className="add-button" onClick={() => setFormOpen((open) => !open)} type="button">
             <Icon name={formOpen ? "close" : "add"} size={18} />
@@ -2096,7 +2044,7 @@ export default function Home() {
                 <strong>Đăng nhập để đồng bộ</strong>
                 <span>Dùng playlist của bạn trên nhiều thiết bị.</span>
                 <small>Chưa có tài khoản? Bạn có thể đăng ký ở bước tiếp theo.</small>
-                <small>Drive Music không nhận mật khẩu hoặc nội dung trò chuyện.</small>
+                <small>HVL 30 không nhận mật khẩu hoặc nội dung trò chuyện.</small>
               </div>
               <a className="sync-signin" href="/signin-with-chatgpt?return_to=%2F">Tiếp tục đăng nhập</a>
             </>
@@ -2105,89 +2053,82 @@ export default function Home() {
       )}
 
       {aboutOpen && (
-        <div className="modal-backdrop about-backdrop" onClick={() => setAboutOpen(false)} role="presentation">
+        <div className="modal-backdrop about-backdrop" onClick={closeAbout} role="presentation">
           <section aria-labelledby="about-title" aria-modal="true" className="install-dialog about-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
             <div className="about-topbar">
-              <span><Icon name="music" size={19} /><strong>Drive Music</strong></span>
-              <button aria-label="Đóng phần giới thiệu" className="dialog-close" onClick={() => setAboutOpen(false)} type="button">
+              <span><Icon name="music" size={19} /><strong>HVL 30</strong></span>
+              <button aria-label="Đóng phần giới thiệu" className="dialog-close" onClick={closeAbout} type="button">
                 <Icon name="close" size={19} />
               </button>
             </div>
 
             <div className="about-content">
               <header className="about-hero">
-                <p className="eyebrow">RPT MCK · ALBUM 2026</p>
-                <h2 id="about-title">HVL</h2>
-                <p className="about-lead">Ba mươi ca khúc như ba mươi lát cắt trong thế giới của MCK — có bản năng, có khoảng lặng, có va chạm và có những khoảnh khắc rất riêng.</p>
-                <div className="about-stats" aria-label="Thông tin album">
-                  <span><strong>30</strong><small>Ca khúc</small></span>
-                  <span><strong>~90</strong><small>Phút</small></span>
-                  <span><strong>2026</strong><small>Phát hành</small></span>
-                  <span><strong>FLAC</strong><small>Nguyên bản</small></span>
+                <div className="about-hero-copy">
+                  <p className="eyebrow">RPT MCK / ALBUM 2026</p>
+                  <h2 aria-label="HVL" id="about-title"><span>H</span><span>V</span><span>L</span></h2>
+                  <p className="about-lead">30 bài hát. 30 artwork. Một thế giới thị giác tối, lạnh và bùng lên bằng màu đỏ.</p>
+                  <div className="about-meta" aria-label="Thông tin album">
+                    <span>30 ca khúc</span><span>1 giờ 30 phút</span><span>FLAC nguyên bản</span>
+                  </div>
+                  <div className="about-links">
+                    <a className="spotify-link" href="https://open.spotify.com/album/36e3pjcLAYabHjXlaSmWOe" rel="noreferrer" target="_blank"><Icon name="spotify" size={18} /><span>Spotify</span></a>
+                    <a className="youtube-link" href="https://www.youtube.com/playlist?list=PLG5bpInXG8Sc" rel="noreferrer" target="_blank"><Icon name="youtube" size={18} /><span>YouTube</span></a>
+                  </div>
+                </div>
+                <div aria-hidden="true" className="about-art-stack">
+                  {[3, 12, 18].map((number) => (
+                    <img alt="" key={number} src={`/artwork/${String(number).padStart(2, "0")}.jpg`} />
+                  ))}
+                  <strong>30</strong>
                 </div>
               </header>
 
-              <div className="about-story-grid">
-                <article className="about-story about-story-wide">
-                  <p className="eyebrow">TỔNG QUAN</p>
-                  <h3>Một album dài, nhưng không chỉ để phô diễn số lượng</h3>
-                  <p>HVL mở đầu bằng “Elegie” rồi đi qua những bản nhạc tình cảm, những khoảnh khắc tự sự và nhiều màn kết hợp. Cấu trúc 30 bài tạo cảm giác như đang lần lượt mở từng trang trong một cuốn nhật ký âm thanh, nơi MCK thay đổi góc nhìn và năng lượng liên tục.</p>
-                  <p>So với hình ảnh giàu năng lượng và cảm xúc bộc phát từng được công chúng biết đến, HVL cho thấy một nghệ sĩ muốn mở rộng không gian sáng tạo: lúc trực diện, lúc mềm hơn, lúc đặt giọng hát và giai điệu ở trung tâm.</p>
-                </article>
-
-                <article className="about-story">
-                  <p className="eyebrow">NGHỆ SĨ ĐA DIỆN</p>
-                  <h3>Không đứng yên trong một cách thể hiện</h3>
-                  <p>MCK di chuyển giữa rap, melody và nhiều sắc thái xử lý giọng. Điều đáng chú ý không chỉ là đổi màu âm thanh, mà là cách anh dùng từng màu sắc để kể một trạng thái khác nhau.</p>
-                </article>
-
-                <article className="about-story">
-                  <p className="eyebrow">TIẾNG NÓI THẾ HỆ</p>
-                  <h3>Cá nhân, trực diện và tự định nghĩa</h3>
-                  <p>Drive Music nhìn MCK như một tiếng nói nổi bật của nghệ sĩ trẻ Việt: không né tránh sự mâu thuẫn trong cảm xúc, dám thử nghiệm và không để một khuôn mẫu duy nhất quyết định mình phải làm nhạc thế nào.</p>
-                </article>
-
-                <article className="about-story about-collaborators">
-                  <p className="eyebrow">CỘNG SỰ TRONG ALBUM</p>
-                  <h3>Những giọng nói cùng xuất hiện</h3>
-                  <div className="artist-chips">
-                    {['marzuz', 'Tage', 'A$AP Ướt Mi', 'Tùng Dương', 'Obito', 'THANHDRAW', 'RPT Orijinn'].map((name) => <span key={name}>{name}</span>)}
+              <section className="about-statement">
+                <p className="eyebrow">MCK · HVL · VĂN HOÁ RAP</p>
+                <h3>Có những điều người trẻ chỉ biết nói ra bằng rap.</h3>
+                <div className="about-essay">
+                  <p>Có một nỗi ấm ức rất khó gọi tên trong người trẻ hôm nay. Họ được bảo phải ngoan hơn, bình thường hơn, dễ nghe hơn. Họ đi qua áp lực, cô đơn, tiền bạc, tình yêu và cảm giác không ai thật sự hiểu mình. Nhiều điều không thể kể với gia đình, không thể nói trong lớp học, cũng không vừa vặn với một dòng trạng thái đẹp đẽ. Rap trở thành nơi họ được phép nói thật, kể cả khi sự thật ấy xấu xí, vụng về và đầy vết xước.</p>
+                  <p>Vì vậy, nỗi lo rap đang mất chất không chỉ nằm ở âm thanh. Nó nằm trong cảm giác mọi góc cạnh dần bị mài phẳng để vừa với thuật toán, nhãn hàng và những khuôn mẫu an toàn. Khi một tiếng nói từng thuộc về bên lề bước vào trung tâm, người nghe vừa tự hào vừa sợ rằng nó sẽ quên mất vì sao mình đã cất tiếng từ đầu.</p>
+                  <blockquote className="about-pullquote">Nếu mọi điều khó chịu đều bị xoá đi, thứ còn lại có còn là lời thật của một thế hệ không?</blockquote>
+                  <p>HVL đặt MCK ngay giữa mâu thuẫn ấy. Album có bản năng, kiêu hãnh, sai lầm, những vết thương tình cảm và cả những câu chữ khiến công chúng phản ứng. Không phải câu nào cũng cần được bênh vực. Tự do biểu đạt không có nghĩa là đứng ngoài trách nhiệm. Nhưng với nhiều người nghe, việc một phần lớn album biến mất vẫn để lại cảm giác hụt hẫng, như một trang nhật ký vừa kịp đọc đã bị xé khỏi cuốn sách.</p>
+                  <p><strong>Điều đã xảy ra:</strong> sau khi làm việc với cơ quan chức năng, MCK xin lỗi về ngôn từ chưa phù hợp và cho biết sẽ gỡ các bản ghi liên quan để chỉnh sửa trước khi cân nhắc phát hành lại. Ngày 31 tháng 7 năm 2026, 19 trong 30 bài không còn hiển thị, còn 11 bài được giữ lại trên YouTube Music. Sự việc không chỉ đặt câu hỏi cho riêng MCK. Nó buộc văn hoá rap Việt nhìn lại cách giữ bản sắc, bảo vệ không gian sáng tạo và đồng thời chịu trách nhiệm khi tiếng nói của mình đã chạm tới hàng triệu người.</p>
+                  <p className="about-closing">Một album có thể được chỉnh sửa. Một nghệ sĩ có thể nhận sai. Nhưng những đối thoại mà HVL mở ra không nên biến mất cùng nút gỡ bài.</p>
+                  <div className="about-source-links">
+                    <a href="https://vov.vn/giai-tri/mck-xin-loi-thong-bao-go-bo-cac-noi-dung-khong-phu-hop-trong-album-moi-post1320186.vov" rel="noreferrer" target="_blank">Thông báo và hướng khắc phục</a>
+                    <a href="https://kenh14.vn/19-bai-hat-bi-go-cua-mck-215260731173623501.chn" rel="noreferrer" target="_blank">Danh sách 19 bài bị ẩn</a>
                   </div>
-                  <p>Các nghệ sĩ góp mặt được hiển thị ngay dưới tên từng bài để người nghe luôn biết đầy đủ phần trình diễn.</p>
-                </article>
+                </div>
+              </section>
 
-                <article className="about-story about-listening">
-                  <p className="eyebrow">TRÊN DRIVE MUSIC</p>
-                  <h3>Nghe chung, không cần tài khoản</h3>
-                  <p>Toàn bộ 30 file FLAC được phát từ kho riêng của Drive Music. Hệ thống giữ nguyên định dạng, hỗ trợ tải theo đoạn để tua nhanh và không còn phụ thuộc tốc độ phản hồi của Google Drive khi nghe.</p>
-                </article>
-              </div>
+              <section className="about-track-section" aria-labelledby="about-track-title">
+                <div className="about-section-heading">
+                  <div><p className="eyebrow">30 ARTWORK / 30 CA KHÚC</p><h3 id="about-track-title">Danh sách album</h3></div>
+                  <p>Chạm vào một artwork để nghe bài đó.</p>
+                </div>
+                <ol className="about-track-grid">
+                  {albumTracks.map((track, index) => (
+                    <li key={track.id}>
+                      <button onClick={() => { closeAbout(); playFromActivePlaylist(index); }} type="button">
+                        <span className="about-track-art">
+                          {track.artworkUrl && <img alt={`Artwork ${track.title}`} loading="lazy" src={track.artworkUrl} />}
+                          <small>{String(index + 1).padStart(2, "0")}</small>
+                        </span>
+                        <span className="about-track-copy"><strong>{track.title}</strong><small>{track.artist}</small></span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </section>
 
-              <div className="about-links">
-                <a className="spotify-link" href="https://open.spotify.com/album/36e3pjcLAYabHjXlaSmWOe" rel="noreferrer" target="_blank"><Icon name="spotify" size={18} /><span>Nghe HVL trên Spotify</span></a>
-                <a className="youtube-link" href="https://www.youtube.com/playlist?list=PLG5bpInXG8Sc" rel="noreferrer" target="_blank"><Icon name="youtube" size={18} /><span>Xem playlist chính thức</span></a>
-              </div>
+              <section className="about-finale">
+                <p className="eyebrow">NHỮNG GIỌNG NÓI CÙNG XUẤT HIỆN</p>
+                <div className="artist-chips">
+                  {['marzuz', 'Tage', 'A$AP Ướt Mi', 'Tùng Dương', 'Obito', 'THANHDRAW', 'RPT Orijinn'].map((name) => <span key={name}>{name}</span>)}
+                </div>
+                <p>30 file FLAC được phát từ kho riêng của HVL 30, giữ nguyên định dạng và không cần tài khoản.</p>
+              </section>
             </div>
-          </section>
-        </div>
-      )}
-
-      {installOpen && (
-        <div className="modal-backdrop" onClick={() => setInstallOpen(false)} role="presentation">
-          <section aria-labelledby="install-title" aria-modal="true" className="install-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
-            <button aria-label="Đóng hướng dẫn" className="dialog-close" onClick={() => setInstallOpen(false)} type="button">
-              <Icon name="close" size={19} />
-            </button>
-            <span className="dialog-mark"><Icon name="install" size={25} /></span>
-            <p className="eyebrow">CÀI DRIVE MUSIC</p>
-            <h2 id="install-title">Thêm vào màn hình chính</h2>
-            <p className="dialog-copy">Trên iPhone, hãy mở trang bằng Safari rồi làm theo ba bước:</p>
-            <ol className="install-steps">
-              <li><span>1</span><div>Chạm nút <strong>Chia sẻ</strong> của Safari.</div></li>
-              <li><span>2</span><div>Chọn <strong>Thêm vào Màn hình chính</strong>.</div></li>
-              <li><span>3</span><div>Chạm <strong>Thêm</strong> để hoàn tất.</div></li>
-            </ol>
-            <button className="dialog-done" onClick={() => setInstallOpen(false)} type="button">Đã hiểu</button>
           </section>
         </div>
       )}
@@ -2274,17 +2215,18 @@ export default function Home() {
 
       <section className="player-card" aria-label="Trình phát nhạc">
         <div className={`artwork ${isPlaying ? "is-playing" : ""}`}>
-          <span aria-hidden="true" className="artwork-aurora" />
-          <div className="artwork-grid" />
-          <div className="sound-bars" aria-hidden="true">
-            <i /><i /><i /><i /><i />
-          </div>
-          <span className="source-badge"><Icon name={currentTrack && isGoogleDriveUrl(currentTrack.originalUrl) ? "drive" : "music"} size={16} /></span>
+          {currentTrack?.artworkUrl ? (
+            <img alt={`Artwork ${currentTrack.title}`} className="artwork-image" src={currentTrack.artworkUrl} />
+          ) : (
+            <div aria-hidden="true" className="artwork-fallback"><strong>HVL</strong><span>RPT MCK</span></div>
+          )}
+          <span aria-hidden="true" className="artwork-number">{String((currentIndex ?? 0) + 1).padStart(2, "0")}</span>
+          <span className="source-badge"><strong>HVL</strong></span>
         </div>
 
         <div className="player-content">
           <div className="track-heading">
-            <p className="eyebrow">{isPlaying ? "ĐANG PHÁT" : "DRIVE MUSIC"}</p>
+            <p className="eyebrow">{isPlaying ? "ĐANG PHÁT" : "HVL 30"}</p>
             <h1>{currentTrack?.title ?? "Playlist của bạn đang trống"}</h1>
             <p className="artist-name">{currentTrack?.artist ?? "Thêm một link nhạc để bắt đầu"}</p>
           </div>
@@ -2423,11 +2365,12 @@ export default function Home() {
             {playlist.map((track, index) => (
               <li className={currentTrack?.id === track.id ? "active" : ""} key={track.id}>
                 <button className="track-main" onClick={() => playFromActivePlaylist(index)} type="button">
-                  <span className="track-cover" style={{ "--cover-hue": colorHue(track.id) } as CSSProperties}>
-                    {currentTrack?.id === track.id && isPlaying ? <Icon name="pause" size={16} /> : <Icon name="music" size={17} />}
+                  <span className="track-cover">
+                    {track.artworkUrl && <img alt="" loading="lazy" src={track.artworkUrl} />}
+                    {currentTrack?.id === track.id && isPlaying && <span className="track-playing"><Icon name="pause" size={14} /></span>}
                     <small>{String(index + 1).padStart(2, "0")}</small>
                   </span>
-                  <span className="track-copy"><strong>{track.title}</strong><small>{track.artist} · {track.format || (isGoogleDriveUrl(track.originalUrl) ? "Google Drive" : "Drive Music")}</small></span>
+                  <span className="track-copy"><strong>{track.title}</strong><small>{track.artist} · {track.format || (isGoogleDriveUrl(track.originalUrl) ? "Google Drive" : "HVL 30")}</small></span>
                 </button>
                 {!sharedCatalogReady && <button aria-label={`Xóa ${track.title}`} className="remove-button" onClick={() => removeTrack(index)} type="button"><Icon name="trash" size={18} /></button>}
               </li>
@@ -2437,7 +2380,7 @@ export default function Home() {
       </section>
 
       <footer>
-        <p>Không cần tài khoản. 30 bài nhạc dùng chung được phát từ kho của Drive Music; file giữ nguyên định dạng gốc, không chuyển mã hoặc giảm chất lượng.</p>
+        <p>Không cần tài khoản. 30 bài nhạc dùng chung được phát từ kho của HVL 30; file giữ nguyên định dạng gốc, không chuyển mã hoặc giảm chất lượng.</p>
         <a href="https://github.com/mm4you" rel="noreferrer" target="_blank">
           <Icon name="github" size={15} /> Built by Khang with Codex · @mm4you
         </a>
