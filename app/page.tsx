@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 type Track = {
@@ -19,13 +19,16 @@ type MusicPlaylist = {
   tracks: Track[];
 };
 
+type RepeatMode = "off" | "once" | "twice";
+
 type LibraryPayload = {
   playlists: MusicPlaylist[];
   activePlaylistId: string;
   settings: {
     shuffleEnabled: boolean;
     autoPlayEnabled: boolean;
-    repeatOneEnabled: boolean;
+    repeatMode: RepeatMode;
+    repeatOneEnabled?: boolean;
   };
 };
 
@@ -78,6 +81,14 @@ type FolderImportProgress = {
   currentName?: string;
 };
 
+type SharedCatalogSnapshot = {
+  complete: boolean;
+  imported: number;
+  total: number;
+  tracks: Track[];
+  error?: string;
+};
+
 type IconName =
   | "add"
   | "autoplay"
@@ -93,7 +104,9 @@ type IconName =
   | "play"
   | "previous"
   | "queue"
+  | "repeat"
   | "repeatOne"
+  | "repeatTwo"
   | "share"
   | "shield"
   | "shuffle"
@@ -199,6 +212,14 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <circle cx="4.5" cy="18" r="1" />
       </>
     ),
+    repeat: (
+      <>
+        <path d="M17 2.8 20.2 6 17 9.2" />
+        <path d="M3.8 11V9a3 3 0 0 1 3-3h13.4" />
+        <path d="M7 21.2 3.8 18 7 14.8" />
+        <path d="M20.2 13v2a3 3 0 0 1-3 3H3.8" />
+      </>
+    ),
     repeatOne: (
       <>
         <path d="M17 2.8 20.2 6 17 9.2" />
@@ -206,6 +227,15 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="M7 21.2 3.8 18 7 14.8" />
         <path d="M20.2 13v2a3 3 0 0 1-3 3H3.8" />
         <path d="M12 10v5M10.5 11.5 12 10" />
+      </>
+    ),
+    repeatTwo: (
+      <>
+        <path d="M17 2.8 20.2 6 17 9.2" />
+        <path d="M3.8 11V9a3 3 0 0 1 3-3h13.4" />
+        <path d="M7 21.2 3.8 18 7 14.8" />
+        <path d="M20.2 13v2a3 3 0 0 1-3 3H3.8" />
+        <path d="M10.2 11.3a1.8 1.8 0 0 1 3.6 0c0 1.4-3.6 2.2-3.6 3.7h3.6" />
       </>
     ),
     share: (
@@ -378,13 +408,6 @@ function formatTime(value: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function formatBytes(value?: number) {
-  if (!value || value < 1) return null;
-  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-  return `${Math.round(value / 1024)} KB`;
-}
-
 function colorHue(value: string) {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -433,12 +456,12 @@ function libraryPayload(
   activePlaylistId: string,
   shuffleEnabled: boolean,
   autoPlayEnabled: boolean,
-  repeatOneEnabled: boolean,
+  repeatMode: RepeatMode,
 ): LibraryPayload {
   return {
     playlists,
     activePlaylistId,
-    settings: { shuffleEnabled, autoPlayEnabled, repeatOneEnabled },
+    settings: { shuffleEnabled, autoPlayEnabled, repeatMode },
   };
 }
 
@@ -461,7 +484,9 @@ function cachedLibraryPayload(raw: string | null): LibraryPayload | null {
       ...value,
       settings: {
         ...value.settings,
-        repeatOneEnabled: value.settings.repeatOneEnabled === true,
+        repeatMode: value.settings.repeatMode === "once" || value.settings.repeatMode === "twice"
+          ? value.settings.repeatMode
+          : value.settings.repeatOneEnabled === true ? "once" : "off",
       },
     };
   } catch {
@@ -473,7 +498,7 @@ function emptyLibraryPayload(): LibraryPayload {
   return libraryPayload(
     [{ id: "default", name: "Playlist của tôi", tracks: [] }],
     "default",
-    false,
+    "off",
     true,
     false,
   );
@@ -568,6 +593,8 @@ export default function Home() {
   const syncInFlightRef = useRef(false);
   const pendingSyncRef = useRef<LibraryPayload | null>(null);
   const latestPayloadRef = useRef<LibraryPayload | null>(null);
+  const sharedCatalogRef = useRef(false);
+  const sharedCatalogAppliedRef = useRef(false);
   const [playlists, setPlaylists] = useState<MusicPlaylist[]>([
     { id: "default", name: "Playlist của tôi", tracks: [] },
   ]);
@@ -595,7 +622,9 @@ export default function Home() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
-  const [repeatOneEnabled, setRepeatOneEnabled] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
+  const [sharedCatalogTracks, setSharedCatalogTracks] = useState<Track[]>([]);
+  const [catalogProgress, setCatalogProgress] = useState<{ imported: number; total: number; complete: boolean } | null>(null);
   const [syncUser, setSyncUser] = useState<SyncUser | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("checking");
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
@@ -620,8 +649,8 @@ export default function Home() {
   );
   const playbackQueue = useMemo(() => playbackPlaylist?.tracks ?? [], [playbackPlaylist]);
   const syncPayload = useMemo(
-    () => libraryPayload(playlists, activePlaylistId, shuffleEnabled, autoPlayEnabled, repeatOneEnabled),
-    [activePlaylistId, autoPlayEnabled, playlists, repeatOneEnabled, shuffleEnabled],
+    () => libraryPayload(playlists, activePlaylistId, shuffleEnabled, autoPlayEnabled, repeatMode),
+    [activePlaylistId, autoPlayEnabled, playlists, repeatMode, shuffleEnabled],
   );
   const setPlaylist = useCallback((update: Track[] | ((current: Track[]) => Track[])) => {
     setPlaylists((current) => current.map((item) => {
@@ -693,11 +722,18 @@ export default function Home() {
         const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") as {
           shuffleEnabled?: boolean;
           autoPlayEnabled?: boolean;
+          repeatMode?: RepeatMode | "all" | "one";
           repeatOneEnabled?: boolean;
         };
         if (typeof settings.shuffleEnabled === "boolean") setShuffleEnabled(settings.shuffleEnabled);
         if (typeof settings.autoPlayEnabled === "boolean") setAutoPlayEnabled(settings.autoPlayEnabled);
-        if (typeof settings.repeatOneEnabled === "boolean") setRepeatOneEnabled(settings.repeatOneEnabled);
+        if (settings.repeatMode === "once" || settings.repeatMode === "twice" || settings.repeatMode === "off") {
+          setRepeatMode(settings.repeatMode);
+        } else if (settings.repeatMode === "all" || settings.repeatMode === "one") {
+          setRepeatMode("once");
+        } else if (settings.repeatOneEnabled === true) {
+          setRepeatMode("one");
+        }
         const rawSavedVolume = localStorage.getItem(VOLUME_KEY);
         const savedVolume = rawSavedVolume === null ? Number.NaN : Number(rawSavedVolume);
         if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) {
@@ -730,14 +766,14 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated || syncUser) return;
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ shuffleEnabled, autoPlayEnabled, repeatOneEnabled }));
-  }, [autoPlayEnabled, hydrated, repeatOneEnabled, shuffleEnabled, syncUser]);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ shuffleEnabled, autoPlayEnabled, repeatMode }));
+  }, [autoPlayEnabled, hydrated, repeatMode, shuffleEnabled, syncUser]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) audio.loop = false;
     repeatCompletionRef.current = 0;
-  }, [repeatOneEnabled]);
+  }, [repeatMode]);
 
   useEffect(() => {
     repeatCompletionRef.current = 0;
@@ -774,12 +810,20 @@ export default function Home() {
   const showControlNotice = useCallback((notice: string) => {
     if (controlNoticeTimerRef.current) clearTimeout(controlNoticeTimerRef.current);
     setControlNotice(notice);
-    playControlClick();
     controlNoticeTimerRef.current = setTimeout(() => {
       controlNoticeTimerRef.current = null;
       setControlNotice("");
     }, 1450);
-  }, [playControlClick]);
+  }, []);
+
+  const handleButtonFeedback = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest("button");
+    if (!button || button.disabled) return;
+    playControlClick();
+    const label = button.getAttribute("aria-label")?.trim();
+    if (label) showControlNotice(label);
+  }, [playControlClick, showControlNotice]);
 
   useEffect(() => () => {
     if (controlNoticeTimerRef.current) clearTimeout(controlNoticeTimerRef.current);
@@ -806,6 +850,13 @@ export default function Home() {
 
   const applySyncedPayload = useCallback((payload: LibraryPayload) => {
     syncApplyingRef.current = true;
+    if (sharedCatalogRef.current) {
+      setShuffleEnabled(payload.settings.shuffleEnabled);
+      setAutoPlayEnabled(payload.settings.autoPlayEnabled);
+      setRepeatMode(payload.settings.repeatMode);
+      queueMicrotask(() => { syncApplyingRef.current = false; });
+      return;
+    }
     const activeId = payload.playlists.some((item) => item.id === payload.activePlaylistId)
       ? payload.activePlaylistId
       : payload.playlists[0]?.id;
@@ -824,10 +875,59 @@ export default function Home() {
     setPlaybackPlaylistId(nextPlayback?.id ?? activeId);
     setShuffleEnabled(payload.settings.shuffleEnabled);
     setAutoPlayEnabled(payload.settings.autoPlayEnabled);
-    setRepeatOneEnabled(payload.settings.repeatOneEnabled);
+    setRepeatMode(payload.settings.repeatMode);
     setCurrentIndex(playbackTracks.length ? (playingIndex >= 0 ? playingIndex : 0) : null);
     queueMicrotask(() => { syncApplyingRef.current = false; });
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    let active = true;
+    const migrateCatalog = async () => {
+      try {
+        let response = await fetch("/api/catalog", { cache: "no-store" });
+        let snapshot = await response.json() as SharedCatalogSnapshot;
+        if (!response.ok) throw new Error(snapshot.error || "Chưa đọc được thư viện chung.");
+        if (active) setCatalogProgress({ imported: snapshot.imported, total: snapshot.total, complete: snapshot.complete });
+
+        for (let attempt = 0; active && !snapshot.complete && attempt < 40; attempt += 1) {
+          response = await fetch("/api/catalog", { method: "POST" });
+          snapshot = await response.json() as SharedCatalogSnapshot;
+          if (!response.ok) throw new Error(snapshot.error || "Quá trình lưu nhạc đang tạm dừng.");
+          if (active) setCatalogProgress({ imported: snapshot.imported, total: snapshot.total, complete: snapshot.complete });
+        }
+        if (!active || !snapshot.complete || !snapshot.tracks.length) return;
+        sharedCatalogRef.current = true;
+        setSharedCatalogTracks(snapshot.tracks);
+      } catch (error) {
+        if (active) setMessage(error instanceof Error ? error.message : "Quá trình lưu thư viện chung đang tạm dừng.");
+      }
+    };
+    void migrateCatalog();
+    return () => { active = false; };
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!sharedCatalogTracks.length || sharedCatalogAppliedRef.current || isPlaying) return;
+    sharedCatalogAppliedRef.current = true;
+    const audio = audioRef.current;
+    shouldResumeRef.current = false;
+    audio?.pause();
+    if (audio) {
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    activeTrackIdRef.current = null;
+    const playlist = { id: "default", name: "Drive Music", tracks: sharedCatalogTracks };
+    playlistRef.current = sharedCatalogTracks;
+    setPlaylists([playlist]);
+    setActivePlaylistId(playlist.id);
+    setPlaybackPlaylistId(playlist.id);
+    setCurrentIndex(0);
+    setCurrentTime(0);
+    setDuration(0);
+    setMessage(`Đã sẵn sàng ${sharedCatalogTracks.length} bài trong thư viện chung.`);
+  }, [isPlaying, sharedCatalogTracks]);
 
   const pushSyncPayload = useCallback(async (initialPayload: LibraryPayload) => {
     let payload = initialPayload;
@@ -1289,7 +1389,7 @@ export default function Home() {
       const remaining = audio.duration - audio.currentTime;
       if (
         autoPlayEnabled &&
-        !repeatOneEnabled &&
+        repeatMode === "off" &&
         shouldResumeRef.current &&
         isAppleTouchDevice() &&
         playlistRef.current.length > 1 &&
@@ -1358,7 +1458,8 @@ export default function Home() {
       }
     };
     const onEnded = () => {
-      if (repeatOneEnabled && repeatCompletionRef.current < 1) {
+      const repeatLimit = repeatMode === "once" ? 1 : repeatMode === "twice" ? 2 : 0;
+      if (repeatCompletionRef.current < repeatLimit) {
         repeatCompletionRef.current += 1;
         audio.currentTime = 0;
         shouldResumeRef.current = true;
@@ -1370,8 +1471,8 @@ export default function Home() {
       } else {
         repeatCompletionRef.current = 0;
         shouldResumeRef.current = false;
-        setMessage(repeatOneEnabled
-          ? "Đã phát bài này 2 lần."
+        setMessage(repeatMode !== "off"
+          ? `Đã phát lại bài này ${repeatLimit} lần.`
           : "Đã phát xong. Tự động phát đang tắt.");
       }
     };
@@ -1458,7 +1559,7 @@ export default function Home() {
       clearFallbackTimer();
       clearRecoveryTimer();
     };
-  }, [armFallbackTimer, autoPlayEnabled, clearFallbackTimer, clearRecoveryTimer, playNextAutomatically, repeatOneEnabled, requestPlayback]);
+  }, [armFallbackTimer, autoPlayEnabled, clearFallbackTimer, clearRecoveryTimer, playNextAutomatically, repeatMode, requestPlayback]);
 
   useEffect(() => {
     const recoverInterruptedPlayback = () => {
@@ -1886,22 +1987,24 @@ export default function Home() {
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const volumeProgress = Math.round(volume * 100);
   const accountLabel = !syncUser ? "Đăng nhập" : syncUser.role === "admin" ? "Admin" : "Tài khoản";
+  const sharedCatalogReady = Boolean(catalogProgress?.complete && sharedCatalogTracks.length);
 
   return (
-    <main className="app-shell" style={{ "--track-hue": activeHue } as CSSProperties}>
+    <main className="app-shell" onClickCapture={handleButtonFeedback} style={{ "--track-hue": activeHue } as CSSProperties}>
       <audio ref={audioRef} playsInline preload="auto" />
       {!usesSystemVolume && <audio aria-hidden="true" ref={preloadAudioRef} preload="metadata" />}
+      {controlNotice && <p aria-live="polite" className="control-notice" role="status">{controlNotice}</p>}
 
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark"><Icon name="music" size={22} /></span>
           <span>
             <strong>Drive Music</strong>
-            <small>{syncUser ? syncStatusLabel(syncStatus) : "Playlist trên thiết bị của bạn"}</small>
+            <small>{sharedCatalogReady ? `${sharedCatalogTracks.length} bài · thư viện chung` : syncUser ? syncStatusLabel(syncStatus) : "Playlist trên thiết bị của bạn"}</small>
           </span>
         </div>
         <div className="header-actions">
-          <button
+          {!sharedCatalogReady && <button
             aria-expanded={syncPanelOpen}
             aria-label={syncUser ? "Tài khoản và đồng bộ" : "Mở đăng nhập hoặc đăng ký"}
             className={`icon-button sync-button identity-visible ${syncUser ? "connected" : "signed-out"} ${syncStatus} ${syncStatus === "syncing" || syncStatus === "checking" ? "working" : ""}`}
@@ -1911,21 +2014,32 @@ export default function Home() {
             <Icon name={syncUser?.role === "admin" ? "shield" : "cloud"} size={18} />
             <span className="sync-button-label">{accountLabel}</span>
             <span className="sync-dot" />
-          </button>
+          </button>}
           <button aria-label="Chia sẻ Drive Music" className="icon-button" onClick={shareApp} type="button">
             <Icon name="share" size={18} />
           </button>
           <button aria-label="Thêm vào màn hình chính" className={`icon-button ${canInstall ? "install-ready" : ""}`} onClick={requestInstall} type="button">
             <Icon name="install" size={18} />
           </button>
-          <button className="add-button" onClick={() => setFormOpen((open) => !open)} type="button">
+          {!sharedCatalogReady && <button className="add-button" onClick={() => setFormOpen((open) => !open)} type="button">
             <Icon name={formOpen ? "close" : "add"} size={18} />
             <span>{formOpen ? "Đóng" : "Thêm nhạc"}</span>
-          </button>
+          </button>}
         </div>
       </header>
 
-      {syncPanelOpen && (
+      {catalogProgress && !catalogProgress.complete && (
+        <div aria-live="polite" className="catalog-migration" role="status">
+          <span><Icon name="cloud" size={16} /></span>
+          <div>
+            <strong>Đang lưu thư viện chung</strong>
+            <small>{catalogProgress.imported}/{catalogProgress.total} bài · Có thể tiếp tục nghe trong lúc chờ</small>
+          </div>
+          <i aria-hidden="true" style={{ "--catalog-progress": `${catalogProgress.total ? Math.min(100, catalogProgress.imported / catalogProgress.total * 100) : 0}%` } as CSSProperties} />
+        </div>
+      )}
+
+      {!sharedCatalogReady && syncPanelOpen && (
         <section aria-label="Tài khoản và đồng bộ" className="sync-panel">
           <span className="sync-panel-icon"><Icon name={syncUser?.role === "admin" ? "shield" : "cloud"} size={20} /></span>
           {syncUser ? (
@@ -2003,7 +2117,7 @@ export default function Home() {
         </div>
       )}
 
-      {formOpen && (
+      {!sharedCatalogReady && formOpen && (
         <section className={`add-panel ${folderLinkId ? "folder-mode" : ""}`} aria-label="Thêm bài hát hoặc thư mục">
           <div className="panel-heading">
             <span className="panel-icon"><Icon name="link" size={20} /></span>
@@ -2050,7 +2164,7 @@ export default function Home() {
                 <span className="metadata-reader-icon"><Icon name="drive" size={17} /></span>
                 <span className="metadata-reader-copy">
                   <strong>Đang đọc thông tin file</strong>
-                  <small>Tên bài hát, ca sĩ, định dạng và dung lượng</small>
+                  <small>Tên bài hát, ca sĩ và định dạng</small>
                   <span aria-hidden="true" className="metadata-progress"><i /></span>
                 </span>
               </div>
@@ -2058,7 +2172,6 @@ export default function Home() {
             {!readingMetadata && driveMetadata && (
               <p aria-live="polite" className="metadata-status detected" role="status">
                 Đã nhận {driveMetadata.format || "file nhạc"}
-                {formatBytes(driveMetadata.size) ? ` · ${formatBytes(driveMetadata.size)}` : ""}
                 {driveMetadata.title ? ` · ${driveMetadata.title}` : ""}
                 {driveMetadata.artist ? ` — ${driveMetadata.artist}` : ""}
               </p>
@@ -2104,7 +2217,6 @@ export default function Home() {
             <div className="quality-row">
               <span>{currentTrack.format || "AUDIO"}</span>
               <span>Chất lượng gốc</span>
-              {formatBytes(currentTrack.size) && <span>{formatBytes(currentTrack.size)}</span>}
             </div>
           )}
 
@@ -2183,19 +2295,19 @@ export default function Home() {
                 <Icon name="autoplay" size={18} />
               </button>
               <button
-                aria-label="Phát bài hiện tại 2 lần"
-                aria-pressed={repeatOneEnabled}
-                className={repeatOneEnabled ? "active" : ""}
+                aria-label={repeatMode === "off" ? "Phát lại bài hiện tại 1 lần" : repeatMode === "once" ? "Phát lại bài hiện tại 2 lần" : "Tắt lặp"}
+                aria-pressed={repeatMode !== "off"}
+                className={repeatMode !== "off" ? "active" : ""}
                 onClick={() => {
-                  const next = !repeatOneEnabled;
-                  setRepeatOneEnabled(next);
+                  const next: RepeatMode = repeatMode === "off" ? "once" : repeatMode === "once" ? "twice" : "off";
+                  setRepeatMode(next);
                   repeatCompletionRef.current = 0;
-                  showControlNotice(`Lặp 2 lần · ${next ? "Đã bật" : "Đã tắt"}`);
+                  showControlNotice(next === "once" ? "Phát lại bài hiện tại 1 lần" : next === "twice" ? "Phát lại bài hiện tại 2 lần" : "Đã tắt lặp");
                 }}
-                title="Lặp 2 lần"
+                title={repeatMode === "once" ? "Lặp 1 lần" : repeatMode === "twice" ? "Lặp 2 lần" : "Lặp"}
                 type="button"
               >
-                <Icon name="repeatOne" size={18} />
+                <Icon name={repeatMode === "once" ? "repeatOne" : repeatMode === "twice" ? "repeatTwo" : "repeat"} size={18} />
               </button>
               <button
                 aria-label={libraryVisible ? "Ẩn danh sách phát" : "Hiện danh sách phát"}
@@ -2213,7 +2325,6 @@ export default function Home() {
                 <Icon name="queue" size={18} />
               </button>
             </div>
-            {controlNotice && <p aria-live="polite" className="control-notice" role="status">{controlNotice}</p>}
           </div>
         </div>
       </section>
@@ -2241,9 +2352,9 @@ export default function Home() {
                     {currentTrack?.id === track.id && isPlaying ? <Icon name="pause" size={16} /> : <Icon name="music" size={17} />}
                     <small>{String(index + 1).padStart(2, "0")}</small>
                   </span>
-                  <span className="track-copy"><strong>{track.title}</strong><small>{track.artist} · {track.format || (isGoogleDriveUrl(track.originalUrl) ? "Google Drive" : "Link âm thanh")}{formatBytes(track.size) ? ` · ${formatBytes(track.size)}` : ""}</small></span>
+                  <span className="track-copy"><strong>{track.title}</strong><small>{track.artist} · {track.format || (isGoogleDriveUrl(track.originalUrl) ? "Google Drive" : "Drive Music")}</small></span>
                 </button>
-                <button aria-label={`Xóa ${track.title}`} className="remove-button" onClick={() => removeTrack(index)} type="button"><Icon name="trash" size={18} /></button>
+                {!sharedCatalogReady && <button aria-label={`Xóa ${track.title}`} className="remove-button" onClick={() => removeTrack(index)} type="button"><Icon name="trash" size={18} /></button>}
               </li>
             ))}
           </ol>
@@ -2251,7 +2362,7 @@ export default function Home() {
       </section>
 
       <footer>
-        <p>Không bắt buộc tài khoản. Chế độ khách lưu playlist trên thiết bị; đăng nhập sẽ đồng bộ metadata và link giữa các thiết bị. File nhạc vẫn phát trực tiếp từ nguồn gốc, không tải lên server, không chuyển mã hoặc giảm chất lượng.</p>
+        <p>Không cần tài khoản. 30 bài nhạc dùng chung được phát từ kho của Drive Music; file giữ nguyên định dạng gốc, không chuyển mã hoặc giảm chất lượng.</p>
         <a href="https://github.com/mm4you" rel="noreferrer" target="_blank">
           <Icon name="github" size={15} /> Built by Khang with Codex · @mm4you
         </a>

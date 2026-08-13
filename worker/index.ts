@@ -4,6 +4,7 @@ import handler from "vinext/server/app-router-entry";
 
 interface Env {
   ASSETS: Fetcher;
+  BUCKET: R2Bucket;
   DB: D1Database;
   IMAGES: {
     input(stream: ReadableStream): {
