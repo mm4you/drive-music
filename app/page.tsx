@@ -1965,7 +1965,7 @@ export default function Home() {
 
       <header className="topbar">
         <div className="brand">
-          <span aria-hidden="true" className="brand-mark"><i>H</i><i>V</i><i>L</i></span>
+          <img alt="" aria-hidden="true" className="brand-logo" src="/favicon.svg" />
           <span>
             <strong>HVL 30</strong>
             <small>{`${sharedCatalogTracks.length || 30} bài · HVL`}</small>
@@ -2056,7 +2056,7 @@ export default function Home() {
         <div className="modal-backdrop about-backdrop" onClick={closeAbout} role="presentation">
           <section aria-labelledby="about-title" aria-modal="true" className="install-dialog about-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
             <div className="about-topbar">
-              <span><Icon name="music" size={19} /><strong>HVL 30</strong></span>
+              <span><img alt="" aria-hidden="true" className="about-brand-icon" src="/favicon.svg" /><strong>HVL 30</strong></span>
               <button aria-label="Đóng phần giới thiệu" className="dialog-close" onClick={closeAbout} type="button">
                 <Icon name="close" size={19} />
               </button>
