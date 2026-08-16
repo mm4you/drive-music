@@ -3,8 +3,6 @@
 
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { getLyricsForTrack } from "@/data/lyrics";
-import { LyricsView } from "@/components/lyrics/LyricsView";
 
 type Track = {
   id: string;
@@ -103,7 +101,6 @@ type IconName =
   | "info"
   | "install"
   | "link"
-  | "lyrics"
   | "music"
   | "next"
   | "pause"
@@ -187,12 +184,6 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="m10 13.8 4-4" />
         <path d="M7.2 15.8 5.4 17.6a3.7 3.7 0 0 1-5.2-5.2L4 8.6a3.7 3.7 0 0 1 5.2 0" transform="translate(3)" />
         <path d="m16.8 8.2 1.8-1.8a3.7 3.7 0 0 0-5.2-5.2L9.6 5a3.7 3.7 0 0 0 0 5.2" transform="translate(-3 5)" />
-      </>
-    ),
-    lyrics: (
-      <>
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        <path d="M8 9h8M8 13h5" />
       </>
     ),
     music: (
@@ -519,9 +510,9 @@ function emptyLibraryPayload(): LibraryPayload {
   return libraryPayload(
     [{ id: "default", name: "Playlist của tôi", tracks: [] }],
     "default",
-    false,
-    true,
     "off",
+    true,
+    false,
   );
 }
 
@@ -627,7 +618,6 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.85);
   const [libraryVisible, setLibraryVisible] = useState(true);
-  const [lyricsVisible, setLyricsVisible] = useState(false);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
@@ -683,10 +673,6 @@ export default function Home() {
   const currentTrack = useMemo(
     () => (currentIndex === null ? null : playbackQueue[currentIndex] ?? null),
     [currentIndex, playbackQueue],
-  );
-  const currentTrackLyrics = useMemo(
-    () => (currentTrack ? getLyricsForTrack(currentTrack) : null),
-    [currentTrack],
   );
   const activeHue = 3;
   const usesSystemVolume = useSyncExternalStore(
@@ -770,7 +756,7 @@ export default function Home() {
         } else if (settings.repeatMode === "all" || settings.repeatMode === "one") {
           setRepeatMode("once");
         } else if (settings.repeatOneEnabled === true) {
-          setRepeatMode("once");
+          setRepeatMode("one");
         }
         const rawSavedVolume = localStorage.getItem(VOLUME_KEY);
         const savedVolume = rawSavedVolume === null ? Number.NaN : Number(rawSavedVolume);
@@ -2229,28 +2215,13 @@ export default function Home() {
 
       <section className="player-card" aria-label="Trình phát nhạc">
         <div className={`artwork ${isPlaying ? "is-playing" : ""}`}>
-          {lyricsVisible ? (
-            <LyricsView
-              currentTime={currentTime}
-              duration={duration}
-              isPlaying={isPlaying}
-              onClose={() => setLyricsVisible(false)}
-              onSeek={seek}
-              trackArtist={currentTrack?.artist}
-              trackLyrics={currentTrackLyrics}
-              trackTitle={currentTrack?.title}
-            />
+          {currentTrack?.artworkUrl ? (
+            <img alt={`Artwork ${currentTrack.title}`} className="artwork-image" src={currentTrack.artworkUrl} />
           ) : (
-            <>
-              {currentTrack?.artworkUrl ? (
-                <img alt={`Artwork ${currentTrack.title}`} className="artwork-image" src={currentTrack.artworkUrl} />
-              ) : (
-                <div aria-hidden="true" className="artwork-fallback"><strong>HVL</strong><span>RPT MCK</span></div>
-              )}
-              <span aria-hidden="true" className="artwork-number">{String((currentIndex ?? 0) + 1).padStart(2, "0")}</span>
-              <span className="source-badge"><strong>HVL</strong></span>
-            </>
+            <div aria-hidden="true" className="artwork-fallback"><strong>HVL</strong><span>RPT MCK</span></div>
           )}
+          <span aria-hidden="true" className="artwork-number">{String((currentIndex ?? 0) + 1).padStart(2, "0")}</span>
+          <span className="source-badge"><strong>HVL</strong></span>
         </div>
 
         <div className="player-content">
@@ -2354,20 +2325,6 @@ export default function Home() {
                 type="button"
               >
                 <Icon name={repeatMode === "once" ? "repeatOne" : repeatMode === "twice" ? "repeatTwo" : "repeat"} size={18} />
-              </button>
-              <button
-                aria-label={lyricsVisible ? "Ẩn lời bài hát" : "Hiện lời bài hát"}
-                aria-pressed={lyricsVisible}
-                className={lyricsVisible ? "active" : ""}
-                onClick={() => {
-                  const next = !lyricsVisible;
-                  setLyricsVisible(next);
-                  showControlNotice(`Lời bài hát · ${next ? "Đang hiện" : "Đã ẩn"}`);
-                }}
-                title="Lời bài hát"
-                type="button"
-              >
-                <Icon name="lyrics" size={18} />
               </button>
               <button
                 aria-label={libraryVisible ? "Ẩn danh sách phát" : "Hiện danh sách phát"}

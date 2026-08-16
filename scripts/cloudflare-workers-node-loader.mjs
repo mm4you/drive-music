@@ -9,14 +9,5 @@ export async function resolve(specifier, context, nextResolve) {
     };
   }
 
-  try {
-    return await nextResolve(specifier, context);
-  } catch (err) {
-    if (specifier.includes("?")) {
-      const cleanSpecifier = specifier.split("?")[0];
-      return nextResolve(cleanSpecifier, context);
-    }
-    throw err;
-  }
+  return nextResolve(specifier, context);
 }
-
