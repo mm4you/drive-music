@@ -146,35 +146,45 @@ export function getLyricsForTrack(
 ): TrackLyrics | null {
   if (!trackOrId) return null;
 
+  let result: TrackLyrics | null = null;
+
   if (typeof trackOrId === "string") {
     const id = trackOrId.trim();
     if (id === "track-01" || id === "18B7wTjbf6YmeeLtzJNv2Etoqq5dyn6R5") return null;
-    if (lyricsByTrackId[id]) return lyricsByTrackId[id];
-    
-    // Check if ID is a normalized title
-    const normalized = normalizeTitle(id);
-    if (titleNormalizationMap[normalized]) return titleNormalizationMap[normalized];
-    return null;
-  }
+    if (lyricsByTrackId[id]) {
+      result = lyricsByTrackId[id];
+    } else {
+      const normalized = normalizeTitle(id);
+      if (titleNormalizationMap[normalized]) result = titleNormalizationMap[normalized];
+    }
+  } else {
+    const { id, title, originalUrl } = trackOrId;
 
-  const { id, title, originalUrl } = trackOrId;
+    // Track 01 Intro exclusion
+    if (id === "track-01" || id === "18B7wTjbf6YmeeLtzJNv2Etoqq5dyn6R5") return null;
+    if (title && normalizeTitle(title) === "elegie") return null;
 
-  // Track 01 Intro exclusion
-  if (id === "track-01" || id === "18B7wTjbf6YmeeLtzJNv2Etoqq5dyn6R5") return null;
-  if (title && normalizeTitle(title) === "elegie") return null;
+    if (id && lyricsByTrackId[id]) {
+      result = lyricsByTrackId[id];
+    } else if (originalUrl) {
+      for (const [key, lyrics] of Object.entries(lyricsByTrackId)) {
+        if (originalUrl.includes(key)) {
+          result = lyrics;
+          break;
+        }
+      }
+    }
 
-  if (id && lyricsByTrackId[id]) return lyricsByTrackId[id];
-
-  if (originalUrl) {
-    for (const [key, lyrics] of Object.entries(lyricsByTrackId)) {
-      if (originalUrl.includes(key)) return lyrics;
+    if (!result && title) {
+      const normalized = normalizeTitle(title);
+      if (titleNormalizationMap[normalized]) result = titleNormalizationMap[normalized];
     }
   }
 
-  if (title) {
-    const normalized = normalizeTitle(title);
-    if (titleNormalizationMap[normalized]) return titleNormalizationMap[normalized];
+  if (result && result.lrc && (!result.syncedLyrics || result.syncedLyrics.length === 0)) {
+    result.syncedLyrics = parseLrc(result.lrc);
   }
 
-  return null;
+  return result;
 }
+
