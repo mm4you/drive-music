@@ -31,6 +31,7 @@ test("renders the shared HVL player without account controls", async () => {
   assert.match(html, /<link[^>]+rel=["']manifest["'][^>]+href=["']\/manifest\.webmanifest["']/i);
   assert.match(html, /content=["']width=device-width, initial-scale=1, viewport-fit=cover["']/i);
   assert.match(html, /aria-label=["']Giới thiệu HVL và RPT MCK["']/i);
+  assert.match(html, /aria-label=["']Hiện lời bài hát["']/i);
   assert.doesNotMatch(html, /aria-label=["']Chia sẻ HVL 30["']/i);
   assert.doesNotMatch(html, /aria-label=["']Thêm vào màn hình chính["']/i);
   assert.match(html, />30 bài · HVL<\/small>/i);

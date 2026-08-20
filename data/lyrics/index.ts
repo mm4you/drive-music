@@ -30,6 +30,8 @@ import { track28Lyrics } from "./track-28";
 import { track29Lyrics } from "./track-29";
 import { track30Lyrics } from "./track-30";
 import type { TrackLyrics } from "./types";
+import { estimatedSyncTrackIds, syncedLyricsByTrackId } from "./synced";
+import { parseLrc } from "./types";
 
 export const lyricsByTrackId: Record<string, TrackLyrics> = {
   // Stable track IDs
@@ -181,10 +183,17 @@ export function getLyricsForTrack(
     }
   }
 
-  if (result && result.lrc && (!result.syncedLyrics || result.syncedLyrics.length === 0)) {
-    result.syncedLyrics = parseLrc(result.lrc);
+  if (result) {
+    const lrc = syncedLyricsByTrackId[result.trackId] || result.lrc;
+    if (lrc) {
+      return {
+        ...result,
+        lrc,
+        syncedLyrics: parseLrc(lrc),
+        syncQuality: estimatedSyncTrackIds.has(result.trackId) ? "estimated" : "timed",
+      };
+    }
   }
 
   return result;
 }
-

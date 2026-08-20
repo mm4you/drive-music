@@ -10,6 +10,7 @@ type LyricsViewProps = {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  mediaElement?: HTMLAudioElement | null;
   onSeek: (time: number) => void;
   onClose?: () => void;
   isCompact?: boolean;
@@ -20,6 +21,9 @@ export const LyricsView = React.memo(function LyricsView({
   trackTitle,
   trackArtist,
   currentTime,
+  duration,
+  isPlaying,
+  mediaElement,
   onSeek,
   onClose,
   isCompact = false,
@@ -108,7 +112,10 @@ export const LyricsView = React.memo(function LyricsView({
           <SyncedLyrics
             syncedLyrics={trackLyrics.syncedLyrics}
             currentTime={currentTime}
+            duration={duration}
+            isPlaying={isPlaying}
             isUserScrolling={isUserScrolling}
+            mediaElement={mediaElement}
             onSeek={onSeek}
           />
         ) : hasStatic && trackLyrics?.lyrics ? (

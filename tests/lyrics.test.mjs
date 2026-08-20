@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getLyricsForTrack, lyricsByTrackId } from "../data/lyrics/index.ts";
+import { getLyricsForTrack, lyricsByTrackId, parseLrc } from "../data/lyrics/index.ts";
 
 test("Track 01 (Intro) explicitly has no lyrics", () => {
   assert.equal(getLyricsForTrack("track-01"), null);
@@ -10,14 +10,30 @@ test("Track 01 (Intro) explicitly has no lyrics", () => {
 });
 
 test("Track 02 through Track 30 all have lyrics mapped", () => {
+  let estimatedTracks = 0;
   for (let i = 2; i <= 30; i++) {
     const num = String(i).padStart(2, "0");
     const trackId = `track-${num}`;
     const lyrics = getLyricsForTrack(trackId);
     assert.ok(lyrics, `Track ${num} must have lyrics`);
     assert.ok(lyrics.lyrics && lyrics.lyrics.length > 0, `Track ${num} lyrics array must not be empty`);
+    assert.ok(lyrics.syncedLyrics && lyrics.syncedLyrics.length > 0, `Track ${num} must have timed lyrics`);
+    assert.ok(
+      lyrics.syncedLyrics.every((line, index, lines) => index === 0 || line.time >= lines[index - 1].time),
+      `Track ${num} timestamps must be ordered`,
+    );
+    if (lyrics.syncQuality === "estimated") estimatedTracks += 1;
     assert.ok(lyrics.title, `Track ${num} must have a title`);
   }
+  assert.equal(estimatedTracks, 1);
+});
+
+test("LRC parser supports offsets, repeated timestamps and line end times", () => {
+  const parsed = parseLrc("[offset:+250]\n[00:01.00][00:03.00]Một câu\n[00:05.50]");
+  assert.deepEqual(parsed.map((line) => line.time), [1.25, 3.25, 5.75]);
+  assert.equal(parsed[0].text, "Một câu");
+  assert.equal(parsed[1].endTime, 5.75);
+  assert.equal(parsed[2].text, "");
 });
 
 test("Resolves lyrics by Google Drive source file IDs", () => {

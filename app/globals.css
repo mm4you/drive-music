@@ -784,6 +784,7 @@ footer a:hover { color: var(--accent); }
 }
 
 .lyric-line {
+  --lyric-progress: 0%;
   display: block;
   width: 100%;
   padding: 8px 12px;
@@ -805,6 +806,21 @@ footer a:hover { color: var(--accent); }
   user-select: none;
 }
 
+.lyric-line-text {
+  display: inline;
+  background: linear-gradient(
+    90deg,
+    #fff 0,
+    #fff var(--lyric-progress),
+    rgba(255, 255, 255, .42) var(--lyric-progress),
+    rgba(255, 255, 255, .42) 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  transition: background-size 60ms linear;
+}
+
 .lyric-line.past {
   opacity: 0.4;
   color: #8c827d;
@@ -813,10 +829,20 @@ footer a:hover { color: var(--accent); }
   transform-origin: left center;
 }
 
+.lyric-line.past .lyric-line-text {
+  background: none;
+  color: #8c827d;
+}
+
 .lyric-line.upcoming {
   opacity: 0.65;
   color: #d1c8c2;
   font-weight: 520;
+}
+
+.lyric-line.upcoming .lyric-line-text {
+  background: none;
+  color: #d1c8c2;
 }
 
 .lyric-line.active {
@@ -831,6 +857,10 @@ footer a:hover { color: var(--accent); }
   transform: scale(1.02);
   transform-origin: left center;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.lyric-line.active .lyric-line-text {
+  filter: drop-shadow(0 0 9px rgba(255, 55, 35, .16));
 }
 
 .lyric-line:hover:not(.active) {
@@ -964,4 +994,3 @@ footer a:hover { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
-

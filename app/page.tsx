@@ -2234,6 +2234,7 @@ export default function Home() {
               currentTime={currentTime}
               duration={duration}
               isPlaying={isPlaying}
+              mediaElement={audioRef.current}
               onClose={() => setLyricsVisible(false)}
               onSeek={seek}
               trackArtist={currentTrack?.artist}
